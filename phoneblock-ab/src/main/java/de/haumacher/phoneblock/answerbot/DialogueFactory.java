@@ -91,21 +91,22 @@ public final class DialogueFactory implements StreamerFactory {
 
 		int sampleRate = flow_spec.getMediaSpec().getSampleRate();
 		try {
-			OutputStream recording = _recordingFile != null ?
+			boolean record = _recordingFile != null;
+			OutputStream recording = record ?
 					AudioFile.getAudioFileOutputStream(_recordingFile, SimpleAudioSystem.getAudioFormat(flow_spec.getMediaSpec().getCodecType(), sampleRate))
 					: OutputStream.nullOutputStream();
 
 			// Both directions are written to the recording, therefore writes are serialized.
 			// shortcut: the two directions are appended in arrival order, not sample-mixed; only
 			// moments where both talk at once interleave. Upgrade to a real mixer if that matters.
-			OutputStream mixed = new SynchronizedOutputStream(recording);
+			OutputStream mixed = record ? new SynchronizedOutputStream(recording) : recording;
 
 			// Trims silence from the counterpart's (incoming) audio and forwards it to the recording.
 			AlawSilenceTrimmer silenceTrimmer =
 				new AlawSilenceTrimmer(sampleRate, _config.bufferTime(), _config.minSilenceTime(), _config.paddingTime(), _config.silenceDb(), mixed, speechDispatcher);
 
 			// Trims silence from the bot's own (outgoing) audio and forwards it to the recording.
-			AlawSilenceTrimmer ownVoiceTrimmer = _recordingFile != null ?
+			AlawSilenceTrimmer ownVoiceTrimmer = record ?
 				new AlawSilenceTrimmer(sampleRate, _config.bufferTime(), _config.minSilenceTime(), _config.paddingTime(), _config.silenceDb(), mixed, null)
 				: null;
 
