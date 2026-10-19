@@ -117,7 +117,9 @@ public final class DialogueFactory implements StreamerFactory {
 					int audio = speechDispatcher.read();
 					if (audio >= 0 && !recordingFailed[0]) {
 						try {
-							ownVoiceTrimmer.write(audio);
+							synchronized (ownVoiceTrimmer) {
+								ownVoiceTrimmer.write(audio);
+							}
 						} catch (IOException ex) {
 							// Recording problems must not silence the call.
 							recordingFailed[0] = true;
@@ -155,10 +157,12 @@ public final class DialogueFactory implements StreamerFactory {
 						public void onRtpStreamReceiverTerminated(RtpStreamReceiver rr, Exception error) {
 							try {
 								if (ownVoiceTrimmer != null) {
-									ownVoiceTrimmer.close();
+									synchronized (ownVoiceTrimmer) {
+										ownVoiceTrimmer.close();
+									}
 								}
 								silenceTrimmer.close();
-								recording.close();
+								mixed.close();
 							} catch (IOException ex) {
 								AnswerBot.LOG.error("Failed to close recording.", ex);
 							}
