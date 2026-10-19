@@ -110,12 +110,19 @@ public final class DialogueFactory implements StreamerFactory {
 				: null;
 
 			// Tap the bot's outgoing audio, so that it ends up in the recording as well.
+			boolean[] recordingFailed = {false};
 			InputStream ownVoice = ownVoiceTrimmer == null ? speechDispatcher : new InputStream() {
 				@Override
 				public int read() throws IOException {
 					int audio = speechDispatcher.read();
-					if (audio >= 0) {
-						ownVoiceTrimmer.write(audio);
+					if (audio >= 0 && !recordingFailed[0]) {
+						try {
+							ownVoiceTrimmer.write(audio);
+						} catch (IOException ex) {
+							// Recording problems must not silence the call.
+							recordingFailed[0] = true;
+							DialogueFactory.LOG.warn("Failed to record outgoing audio.", ex);
+						}
 					}
 					return audio;
 				}
