@@ -183,7 +183,7 @@ public final class DialogueFactory implements StreamerFactory {
 	/**
 	 * {@link OutputStream} that serializes writes, so that audio of both directions can be recorded concurrently.
 	 */
-	private static final class SynchronizedOutputStream extends OutputStream {
+	static final class SynchronizedOutputStream extends OutputStream {
 
 		private final OutputStream _out;
 
