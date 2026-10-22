@@ -23,9 +23,11 @@ module de.haumacher.phoneblock {
 	
 	exports de.haumacher.phoneblock.db to org.mybatis;
 	exports de.haumacher.phoneblock.db.settings to org.mybatis;
+	exports de.haumacher.phoneblock.diag to org.mybatis;
 	
 	requires transitive de.haumacher.phoneblock.shared;
 	requires transitive de.haumacher.phoneblock.ab;
+	requires transitive de.haumacher.mailcheck;
 
 	requires transitive org.mjsip.sound;
 	requires transitive org.mjsip.sip;
@@ -53,7 +55,6 @@ module de.haumacher.phoneblock {
 	requires transitive jakarta.servlet.jsp;
 	requires transitive jakarta.el;
 	requires transitive jakarta.mail;
-	requires transitive org.simplejavamail.java_utils_mail_dkim;
 	requires transitive de.haumacher.msgbuf;
 	requires transitive org.apache.httpcomponents.httpcore;
 	requires transitive org.jsoup;
@@ -63,10 +64,8 @@ module de.haumacher.phoneblock {
 	requires transitive pac4j.jakartaee;
 	requires transitive pac4j.oidc;
 	requires transitive org.apache.commons.lang3;
-	requires transitive api;
-	requires transitive service;
 	requires transitive org.tinylog.api;
 	requires transitive jakartaee.pac4j;
-	requires transitive utils.data.fetcher;
 	requires transitive org.eclipse.angus.mail;
+	requires transitive io.nayuki.qrcodegen;
 }

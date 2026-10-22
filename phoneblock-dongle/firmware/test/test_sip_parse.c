@@ -1,0 +1,770 @@
+// Host-side unit tests for main/sip_parse.{c,h}.
+//
+// Each test case is a single line of the form
+//     expect_<fn>(expected, input);
+// The expected value comes first to match standard assertion-library
+// style and to keep the visual weight on the intent.
+//
+// Build and run:
+//     make test
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdbool.h>
+
+#include "sip_parse.h"
+#include "audio.h"
+
+// ---------------------------------------------------------------------------
+// Assertion helpers — each one runs a parser and compares to expected.
+// ---------------------------------------------------------------------------
+
+static int g_tests    = 0;
+static int g_failures = 0;
+
+static void report_str(const char *what, const char *input,
+                       const char *expected, const char *got)
+{
+    g_tests++;
+    if (strcmp(got, expected) == 0) return;
+    fprintf(stderr,
+            "FAIL %-20s input=<<<%s>>>\n  expected=\"%s\"\n  got=     \"%s\"\n",
+            what, input, expected, got);
+    g_failures++;
+}
+
+static void report_int(const char *what, const char *input,
+                       long expected, long got)
+{
+    g_tests++;
+    if (got == expected) return;
+    fprintf(stderr,
+            "FAIL %-20s input=<<<%s>>>\n  expected=%ld\n  got=     %ld\n",
+            what, input, expected, got);
+    g_failures++;
+}
+
+static void report_bool(const char *what, const char *input,
+                        bool expected, bool got)
+{
+    g_tests++;
+    if (got == expected) return;
+    fprintf(stderr,
+            "FAIL %-20s input=<<<%s>>>\n  expected=%s\n  got=     %s\n",
+            what, input, expected ? "true" : "false", got ? "true" : "false");
+    g_failures++;
+}
+
+// --- Per-parser wrappers ---------------------------------------------------
+
+static void expect_find_header(const char *expected, const char *msg, const char *name)
+{
+    const char *p = find_header(msg, (int)strlen(msg), name);
+    if (!expected) {
+        report_bool("find_header/missing", name, false, p != NULL);
+    } else {
+        char buf[128] = {0};
+        if (p) {
+            const char *end = msg + strlen(msg);
+            header_value(p, end, buf, sizeof(buf));
+        }
+        report_str("find_header", name, expected, buf);
+    }
+}
+
+static void expect_status(int expected, const char *resp)
+{
+    int got = parse_status_code(resp, (int)strlen(resp));
+    report_int("parse_status_code", resp, expected, got);
+}
+
+static void expect_reason(const char *expected, const char *resp)
+{
+    char buf[64] = "sentinel";
+    parse_reason_phrase(resp, (int)strlen(resp), buf, sizeof(buf));
+    report_str("parse_reason_phrase", resp, expected, buf);
+}
+
+static void expect_register_expires(int expected, const char *resp)
+{
+    int got = parse_register_expires(resp, (int)strlen(resp), NULL);
+    report_int("parse_register_expires", resp, expected, got);
+}
+
+static void expect_register_expires_inst(int expected, const char *resp,
+                                         const char *instance)
+{
+    int got = parse_register_expires(resp, (int)strlen(resp), instance);
+    report_int("parse_register_expires(inst)", resp, expected, got);
+}
+
+static void expect_cseq(uint32_t expected, const char *req)
+{
+    uint32_t got = parse_cseq(req, (int)strlen(req));
+    report_int("parse_cseq", req, (long)expected, (long)got);
+}
+
+static void expect_method(const char *expected, const char *pkt)
+{
+    char out[32] = {0};
+    parse_method(pkt, (int)strlen(pkt), out, sizeof(out));
+    report_str("parse_method", pkt, expected, out);
+}
+
+static void expect_call_id(const char *expected, const char *req)
+{
+    char out[128] = {0};
+    parse_call_id(req, (int)strlen(req), out, sizeof(out));
+    report_str("parse_call_id", req, expected, out);
+}
+
+static void expect_tag(const char *expected, const char *hdr_val)
+{
+    char out[64] = {0};
+    parse_tag(hdr_val, (int)strlen(hdr_val), out, sizeof(out));
+    report_str("parse_tag", hdr_val, expected, out);
+}
+
+static void expect_parse_uri(const char *expected, const char *hdr_val)
+{
+    char out[128] = {0};
+    parse_uri(hdr_val, (int)strlen(hdr_val), out, sizeof(out));
+    report_str("parse_uri", hdr_val, expected, out);
+}
+
+static void expect_user_from_uri(const char *expected, const char *uri)
+{
+    char out[64] = {0};
+    user_from_uri(uri, out, sizeof(out));
+    report_str("user_from_uri", uri, expected, out);
+}
+
+static void expect_display_name(const char *expected, const char *hdr_val)
+{
+    char out[64] = {0};
+    parse_display_name(hdr_val, (int)strlen(hdr_val), out, sizeof(out));
+    report_str("parse_display_name", hdr_val, expected, out);
+}
+
+static void expect_phone_number_like(bool expected, const char *s)
+{
+    report_bool("is_phone_number_like", s, expected, is_phone_number_like(s));
+}
+
+static void expect_known_contact(bool expected, const char *display)
+{
+    report_bool("is_known_contact", display, expected, is_known_contact(display));
+}
+
+static void expect_dialable(bool expected, const char *n)
+{
+    report_bool("looks_dialable", n, expected, looks_dialable(n));
+}
+
+static void expect_normalize(const char *dial_prefix, const char *expected,
+                             const char *raw)
+{
+    char out[64] = {0};
+    normalize_e164(raw, out, sizeof(out), dial_prefix);
+    report_str("normalize_e164", raw, expected, out);
+}
+
+// Shorthand for the German-line cases, which are the bulk of the suite.
+static void expect_normalize_de(const char *expected, const char *raw)
+{
+    expect_normalize("+49", expected, raw);
+}
+
+static void expect_same_call_id(bool expected, const char *a, const char *b)
+{
+    char both[128];
+    snprintf(both, sizeof(both), "'%s' vs '%s'", a ? a : "(null)", b ? b : "(null)");
+    report_bool("same_call_id", both, expected, same_call_id(a, b));
+}
+
+static void expect_sdp_ip(const char *expected, const char *msg)
+{
+    char out[32] = {0};
+    parse_sdp_connection_ip(msg, (int)strlen(msg), out, sizeof(out));
+    report_str("parse_sdp_connection_ip", msg, expected, out);
+}
+
+static void expect_sdp_port(int expected, const char *msg)
+{
+    int got = parse_sdp_audio_port(msg, (int)strlen(msg));
+    report_int("parse_sdp_audio_port", msg, expected, got);
+}
+
+static void expect_alaw(uint8_t expected, int16_t pcm)
+{
+    char label[32];
+    snprintf(label, sizeof(label), "%d", pcm);
+    uint8_t got = pcm_to_alaw(pcm);
+    report_int("pcm_to_alaw", label, (long)expected, (long)got);
+}
+
+// ---------------------------------------------------------------------------
+// Sample messages used by header-level tests.
+// ---------------------------------------------------------------------------
+
+static const char *SAMPLE_INVITE =
+    "INVITE sip:phoneblock-ab@192.168.178.22:5061 SIP/2.0\r\n"
+    "Via: SIP/2.0/UDP 192.168.178.1:5060;branch=z9hG4bK5DBE35795BA63E78\r\n"
+    "From: \"Haui Mobil\" <sip:**622@fritz.box>;tag=B36A0F8B30FDE1CD\r\n"
+    "To: <sip:phoneblock-ab@192.168.178.22:5061>\r\n"
+    "Call-ID: 4B8A3DA30AC9B91D@192.168.178.1\r\n"
+    "CSeq: 5 INVITE\r\n"
+    "Contact: <sip:2C04299A538E7E86CB11CD56FBB9BB6@192.168.178.1>\r\n"
+    "Content-Length: 0\r\n\r\n";
+
+static const char *SAMPLE_401 =
+    "SIP/2.0 401 Unauthorized\r\n"
+    "Via: SIP/2.0/UDP 10.0.2.15:5061;branch=z9hG4bKcf58dc0b;rport=56718;received=192.168.178.22\r\n"
+    "From: <sip:phoneblock-ab@192.168.178.1>;tag=995f443d\r\n"
+    "To: <sip:phoneblock-ab@192.168.178.1>;tag=FA26CC97\r\n"
+    "Call-ID: cb9319c3@phoneblock\r\n"
+    "CSeq: 879113571 REGISTER\r\n"
+    "WWW-Authenticate: Digest realm=\"fritz.box\", nonce=\"055DA32FA85599EA\"\r\n"
+    "Content-Length: 0\r\n\r\n";
+
+// ---------------------------------------------------------------------------
+// Test groups
+// ---------------------------------------------------------------------------
+
+static void test_parse_method(void)
+{
+    expect_method("INVITE",   SAMPLE_INVITE);
+    expect_method("REGISTER", "REGISTER sip:fritz.box SIP/2.0\r\n");
+    expect_method("OPTIONS",  "OPTIONS sip:x SIP/2.0\r\n");
+    expect_method("BYE",      "BYE sip:x SIP/2.0\r\n");
+    expect_method("ACK",      "ACK sip:x SIP/2.0\r\n");
+}
+
+static void test_parse_status_code(void)
+{
+    expect_status(401, SAMPLE_401);
+    expect_status(200, "SIP/2.0 200 OK\r\n\r\n");
+    expect_status(486, "SIP/2.0 486 Busy Here\r\n\r\n");
+    expect_status(100, "SIP/2.0 100 Trying\r\n\r\n");
+    expect_status(-1,  SAMPLE_INVITE);             // not a response
+    expect_status(-1,  "");                         // too short
+    expect_status(-1,  "HTTP/1.1 200 OK\r\n\r\n"); // wrong protocol
+}
+
+static void test_parse_reason_phrase(void)
+{
+    expect_reason("OK",        "SIP/2.0 200 OK\r\n\r\n");
+    expect_reason("Forbidden", "SIP/2.0 403 Forbidden\r\n\r\n");
+    // Multi-word phrase with a provider-specific cause is kept whole.
+    expect_reason("Forbidden - Registration limit exceeded",
+        "SIP/2.0 403 Forbidden - Registration limit exceeded\r\n"
+        "Retry-After: 1800\r\n\r\n");
+    expect_reason("Busy Here", "SIP/2.0 486 Busy Here\r\n\r\n");
+    // No phrase after the code → empty.
+    expect_reason("",          "SIP/2.0 100\r\n\r\n");
+    // Not a status line → empty (sentinel cleared).
+    expect_reason("",          SAMPLE_INVITE);
+    expect_reason("",          "");
+}
+
+static void test_parse_register_expires(void)
+{
+    // Top-level Expires header.
+    expect_register_expires(300,
+        "SIP/2.0 200 OK\r\n"
+        "Via: SIP/2.0/UDP 1.2.3.4\r\n"
+        "Contact: <sip:alice@host>\r\n"
+        "Expires: 300\r\n"
+        "Content-Length: 0\r\n\r\n");
+
+    // Contact-level expires= wins over top-level (RFC 3261 §10.2.4).
+    expect_register_expires(120,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:alice@host>;expires=120\r\n"
+        "Expires: 999\r\n\r\n");
+
+    // Contact only.
+    expect_register_expires(60,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:alice@host:5060>;q=0.5;expires=60\r\n\r\n");
+
+    // Whitespace tolerance on the top-level header.
+    expect_register_expires(600,
+        "SIP/2.0 200 OK\r\n"
+        "Expires:  600\r\n\r\n");
+
+    // expires=0 (deregister grant) is a real value, not "absent".
+    expect_register_expires(0,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:alice@host>;expires=0\r\n\r\n");
+
+    // Sanity clamp at 30 days for absurd values.
+    expect_register_expires(86400 * 30,
+        "SIP/2.0 200 OK\r\n"
+        "Expires: 99999999999\r\n\r\n");
+
+    // Neither header → -1, caller falls back to its requested value.
+    expect_register_expires(-1,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:alice@host>\r\n"
+        "Content-Length: 0\r\n\r\n");
+
+    // Missing Expires value (just the header keyword) → -1.
+    expect_register_expires(-1,
+        "SIP/2.0 200 OK\r\n"
+        "Expires: \r\n\r\n");
+
+    // --- Multi-binding disambiguation by +sip.instance (real field logs) ---
+
+    // Fritz!Box line: the FB's own native binding is listed FIRST with the
+    // long 3600 s lease; OUR dongle binding follows with only 1800 s. The
+    // old "first Contact wins" logic mis-read 3600 and refreshed too late.
+    const char *fb_resp =
+        "SIP/2.0 200 OK\r\n"
+        "From: <sip:+4970412875@tel.t-online.de>;tag=bab44de7256553c7\r\n"
+        "CSeq: 4 REGISTER\r\n"
+        "Call-ID: 5dbd8740@phoneblock\r\n"
+        "Contact: <sip:+4970412875@93.195.216.76:61632;uniq=A591F883F8F54013C560272D96A2896;user=phone;transport=tls>;expires=3600;+sip.instance=\"<urn:uuid:9139c396-82ea-64d4-284a-14c307513cdc>\"\r\n"
+        "Contact: <sip:+4970412875@93.195.216.76:15060>;expires=1800;+sip.instance=\"<urn:uuid:7097f5e2-c1a0-4986-9f96-dd9ec2b9b9ac>\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    expect_register_expires_inst(1800, fb_resp,
+        "7097f5e2-c1a0-4986-9f96-dd9ec2b9b9ac");
+    // Without the instance, the legacy behaviour still picks the first.
+    expect_register_expires(3600, fb_resp);
+
+    // Speedport line: three bindings; the native MMTel device holds 3600 s,
+    // both :15060 bindings (ours + a stale one) get 660 s. Ours is last.
+    const char *sp_resp =
+        "SIP/2.0 200 OK\r\n"
+        "CSeq: 3 REGISTER\r\n"
+        "Contact: <sip:+4944896042@84.182.185.55:15060>;expires=660;+sip.instance=\"<urn:uuid:9cfefa74-96fd-48c6-87fa-6e4e46a2f87e>\"\r\n"
+        "Contact: <sip:+4944896042@84.182.185.55:5060;user=phone>;expires=3600;+sip.instance=\"<urn:uuid:00000000-0000-0000-0000-b86685933e15>\";+g.3gpp.icsi-ref=\"urn%3Aurn-7%3A3gpp-service.ims.icsi.mmtel\";audio\r\n"
+        "Contact: <sip:+4944896042@84.182.185.55:15060>;expires=660;+sip.instance=\"<urn:uuid:43eb6d15-baf1-49c9-8759-885894880b66>\"\r\n"
+        "Content-Length: 0\r\n\r\n";
+    expect_register_expires_inst(660, sp_resp,
+        "43eb6d15-baf1-49c9-8759-885894880b66");
+
+    // Single binding (the common case): matched by instance.
+    expect_register_expires_inst(3600,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:alice@host:15060>;expires=3600;+sip.instance=\"<urn:uuid:abcd>\"\r\n\r\n",
+        "abcd");
+
+    // Instance given but our binding is absent among several foreign ones:
+    // do NOT borrow a foreign lease — fall back to top-level Expires.
+    expect_register_expires_inst(900,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:a@h:5060>;expires=3600;+sip.instance=\"<urn:uuid:1111>\"\r\n"
+        "Contact: <sip:a@h:5061>;expires=7200;+sip.instance=\"<urn:uuid:2222>\"\r\n"
+        "Expires: 900\r\n\r\n",
+        "deadbeef");
+    // ...and with no top-level Expires either → -1 (keep requested).
+    expect_register_expires_inst(-1,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:a@h:5060>;expires=3600;+sip.instance=\"<urn:uuid:1111>\"\r\n"
+        "Contact: <sip:a@h:5061>;expires=7200;+sip.instance=\"<urn:uuid:2222>\"\r\n\r\n",
+        "deadbeef");
+
+    // A lone Contact without our instance is still taken as ours.
+    expect_register_expires_inst(1200,
+        "SIP/2.0 200 OK\r\n"
+        "Contact: <sip:a@h:5060>;expires=1200\r\n\r\n",
+        "7097f5e2-c1a0-4986-9f96-dd9ec2b9b9ac");
+}
+
+static void test_parse_cseq(void)
+{
+    expect_cseq(5,         SAMPLE_INVITE);
+    expect_cseq(879113571, SAMPLE_401);
+    expect_cseq(0,         "FOO sip:x SIP/2.0\r\n\r\n");  // no CSeq header
+}
+
+static void test_parse_call_id(void)
+{
+    expect_call_id("4B8A3DA30AC9B91D@192.168.178.1", SAMPLE_INVITE);
+    expect_call_id("cb9319c3@phoneblock",            SAMPLE_401);
+    expect_call_id("",                                "FOO sip:x SIP/2.0\r\n\r\n");
+    // Trailing whitespace is trimmed.
+    expect_call_id("abc123",
+                   "INVITE sip:x SIP/2.0\r\n"
+                   "Call-ID:  abc123 \t\r\n\r\n");
+}
+
+static void test_find_header(void)
+{
+    // Case-insensitive match.
+    expect_find_header("\"Haui Mobil\" <sip:**622@fritz.box>;tag=B36A0F8B30FDE1CD",
+                       SAMPLE_INVITE, "From");
+    expect_find_header("\"Haui Mobil\" <sip:**622@fritz.box>;tag=B36A0F8B30FDE1CD",
+                       SAMPLE_INVITE, "from");
+    expect_find_header("Digest realm=\"fritz.box\", nonce=\"055DA32FA85599EA\"",
+                       SAMPLE_401, "WWW-Authenticate");
+    expect_find_header(NULL, SAMPLE_INVITE, "X-Does-Not-Exist");
+}
+
+static void expect_via_received(const char *expected, const char *resp)
+{
+    char out[64] = {0};
+    parse_via_received(resp, (int)strlen(resp), out, sizeof(out));
+    report_str("via_received", resp, expected, out);
+}
+
+static void test_parse_via_received(void)
+{
+    // Registrar adds received= (and rport) with the public source IP.
+    expect_via_received("84.130.1.2",
+        "SIP/2.0 401 Unauthorized\r\n"
+        "Via: SIP/2.0/UDP 192.168.1.9:15060;branch=z9hG4bKabc;rport=40012;received=84.130.1.2\r\n"
+        "\r\n");
+    // received= not last on the line — stop at the next ';'.
+    expect_via_received("1.2.3.4",
+        "SIP/2.0 200 OK\r\n"
+        "Via: SIP/2.0/UDP 10.0.0.5:15060;received=1.2.3.4;rport=5060\r\n"
+        "\r\n");
+    // No received parameter → empty.
+    expect_via_received("",
+        "SIP/2.0 200 OK\r\n"
+        "Via: SIP/2.0/UDP 10.0.0.5:15060;rport\r\n"
+        "\r\n");
+    // No Via header at all → empty.
+    expect_via_received("",
+        "SIP/2.0 200 OK\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n");
+}
+
+static void test_parse_tag(void)
+{
+    expect_tag("abc",              "<sip:a@b>;tag=abc");
+    expect_tag("abc",              "<sip:a@b>;tag=abc;other=xyz");
+    expect_tag("B36A0F8B30FDE1CD", "\"Haui\" <sip:**622@fritz.box>;tag=B36A0F8B30FDE1CD");
+    expect_tag("UPPER",            "<sip:a@b>;TAG=UPPER");   // case-insensitive
+    expect_tag("",                 "<sip:a@b>");              // no tag
+    expect_tag("",                 "");
+}
+
+static void test_parse_uri(void)
+{
+    expect_parse_uri("sip:alice@example.com",  "<sip:alice@example.com>");
+    expect_parse_uri("sip:alice@example.com",  "\"Alice\" <sip:alice@example.com>");
+    expect_parse_uri("sip:alice@example.com",  "\"Alice\" <sip:alice@example.com>;tag=xyz");
+    expect_parse_uri("sip:alice@example.com",  "<sip:alice@example.com;transport=udp>");
+    expect_parse_uri("sip:alice@example.com",  "sip:alice@example.com");
+    expect_parse_uri("sip:alice@example.com",  "sip:alice@example.com;tag=abc");
+    expect_parse_uri("sip:**622@fritz.box",    "<sip:**622@fritz.box>");
+    expect_parse_uri("sip:+4917412345@host",   "<sip:+4917412345@host>");
+    expect_parse_uri("",                        "");
+}
+
+static void test_user_from_uri(void)
+{
+    expect_user_from_uri("alice",          "sip:alice@example.com");
+    expect_user_from_uri("01234",          "sip:01234@fritz.box");
+    expect_user_from_uri("+4917412345",    "sip:+4917412345@host");
+    expect_user_from_uri("**622",          "sip:**622@fritz.box");
+    expect_user_from_uri("bob",            "sips:bob@example.com:5061");
+    expect_user_from_uri("+1234567890",    "tel:+1234567890");
+    expect_user_from_uri("",                "");
+}
+
+static void test_parse_display_name(void)
+{
+    expect_display_name("Haui Mobil", "\"Haui Mobil\" <sip:**622@fritz.box>;tag=xyz");
+    expect_display_name("Alice",      "\"Alice\" <sip:alice@example.com>");
+    expect_display_name("Joe",        "Joe <sip:joe@example.com>");
+    expect_display_name("",           "<sip:alice@example.com>");
+    expect_display_name("",           "\"\" <sip:alice@example.com>");
+    // Leading whitespace before quoted name is tolerated.
+    expect_display_name("Alice",      "  \"Alice\" <sip:a@b>");
+    // Unquoted multi-word, trimmed.
+    expect_display_name("Max Meier",  "Max Meier <sip:m@b>");
+}
+
+static void test_is_phone_number_like(void)
+{
+    expect_phone_number_like(true,  "030123456");
+    expect_phone_number_like(true,  "+49 (030) 123-456");
+    expect_phone_number_like(true,  "+491234");
+    expect_phone_number_like(true,  "12/34");
+    expect_phone_number_like(false, "Haui Mobil");
+    expect_phone_number_like(false, "Alice");
+    expect_phone_number_like(false, "+");              // no digit
+    expect_phone_number_like(false, "");                // empty
+    expect_phone_number_like(false, "   ");             // no digit
+}
+
+static void test_is_known_contact(void)
+{
+    // Real phonebook contacts → known.
+    expect_known_contact(true,  "Haui Mobil");
+    expect_known_contact(true,  "Alice");
+    expect_known_contact(true,  "Max Meier");
+    // "Spamer GmbH" is a real name, not the SPAM marker.
+    expect_known_contact(true,  "Spamer GmbH");
+
+    // Empty / numeric display names → not a known contact.
+    expect_known_contact(false, "");
+    expect_known_contact(false, "030123456");
+    expect_known_contact(false, "+49 (030) 123-456");
+
+    // SPAM-prefixed entries (Fritz!Box CardDAV blocklist subscription)
+    // must NOT be treated as a known contact, regardless of casing or
+    // separator. "SPAM:" is the literal AnswerBot.SPAM_MARKER.
+    expect_known_contact(false, "SPAM: Werbeanruf");
+    expect_known_contact(false, "SPAM Werbeanruf");
+    expect_known_contact(false, "spam: foo");
+    expect_known_contact(false, "Spam-Anrufer");
+    expect_known_contact(false, "SPAM");
+}
+
+static void test_looks_dialable(void)
+{
+    expect_dialable(true,  "01234");
+    expect_dialable(true,  "030123456");
+    expect_dialable(true,  "+4917412345");
+    expect_dialable(false, "**622");                    // internal Fritz!Box code
+    expect_dialable(false, "*21#0172123");              // feature code
+    expect_dialable(false, "#123");
+    expect_dialable(false, "");
+    expect_dialable(false, "+");                         // + alone
+    expect_dialable(false, "+a123");                     // + followed by non-digit
+}
+
+static void test_normalize_de(void)
+{
+    // National German → international +49 (leading 0 dropped).
+    expect_normalize_de("+4917412345678",  "017412345678");
+    expect_normalize_de("+4930123456",     "030123456");
+    // Already E.164: untouched.
+    expect_normalize_de("+4917412345678",  "+4917412345678");
+    expect_normalize_de("+18886749072",    "+18886749072");
+    // "00" international escape → "+".
+    expect_normalize_de("+491741234",      "00491741234");
+    expect_normalize_de("+18886749072",    "0018886749072");
+    // Whitespace / dashes / parens / slashes stripped before prefix logic.
+    expect_normalize_de("+4930123456",     "030 123 456");
+    expect_normalize_de("+4930123456",     "030-123-456");
+    expect_normalize_de("+4930123456",     "(030) 123456");
+    expect_normalize_de("+4930123456",     "030/123456");
+    expect_normalize_de("+4917412345678",  "+49 174 1234 5678");
+    // Non-external inputs pass through unchanged; looks_dialable rejects
+    // them later.
+    expect_normalize_de("**622",           "**622");
+    expect_normalize_de("*21#",            "*21#");
+    expect_normalize_de("",                "");
+}
+
+// Issue #505: a line outside Germany must expand its national numbers with
+// its own country code. Before the dial prefix became configurable, the UK
+// number from the report normalised to "+497520694441" — which is not just
+// a mislabelled country: that string is what gets SHA-1'd for the
+// /api/check-prefix lookup, so every national number missed silently.
+static void test_normalize_e164_foreign(void)
+{
+    // UK line (trunk "0", escape "00" — same grammar as Germany).
+    expect_normalize("+44", "+447520694441", "07520694441");
+    expect_normalize("+44", "+442071234567", "020 7123 4567");
+    // Already international: the line's country is irrelevant.
+    expect_normalize("+44", "+4930123456",   "+4930123456");
+    expect_normalize("+44", "+4930123456",   "00493 0123456");
+    expect_normalize("+44", "+18886749072",  "0018886749072");
+    // Same national input, different line → different country.
+    expect_normalize("+49", "+497520694441", "07520694441");
+    expect_normalize("+385", "+385912345678", "0912345678");   // 3-digit code
+    // Non-external inputs still pass through untouched.
+    expect_normalize("+44", "**622",         "**622");
+    expect_normalize("+44", "",              "");
+    // No country configured: leave the national number alone rather than
+    // stripping a trunk prefix and emitting an unresolvable bare number.
+    expect_normalize(NULL, "030123456",      "030123456");
+    expect_normalize("",   "030123456",      "030123456");
+    // The international forms need no country and stay correct regardless.
+    expect_normalize(NULL, "+4930123456",    "+4930123456");
+    expect_normalize(NULL, "+4930123456",    "004930123456");
+}
+
+// Countries whose dialling grammar is not Germany's (issue #432). The
+// trunk prefix and international escape come from dial_rules_for(), so a
+// leading zero is only stripped where it actually is a trunk prefix.
+static void test_normalize_e164_dial_rules(void)
+{
+    // Italy: no trunk prefix — the leading 0 is part of the number and must
+    // survive. Getting this wrong was the flaw in the first cut of #505.
+    expect_normalize("+39", "+390612345678", "0612345678");
+    expect_normalize("+39", "+393331234567", "3331234567");   // mobile, no 0
+    expect_normalize("+39", "+4930123456",   "004930123456"); // escape is 00
+
+    // Denmark and Czechia likewise have no trunk prefix.
+    expect_normalize("+45",  "+4512345678",   "12345678");
+    expect_normalize("+420", "+420212345678", "212345678");
+
+    // NANP: trunk "1", escape "011".
+    expect_normalize("+1", "+16023651873", "1-602-365-1873");
+    expect_normalize("+1", "+16023651873", "602-365-1873");   // bare, no 1
+    expect_normalize("+1", "+4930123456",  "01149 30 123456");
+    // "00…" is NOT an escape in NANP — it is a national number there.
+    expect_normalize("+1", "+1004930123456", "004930123456");
+
+    // Russia: trunk "8", escape "810".
+    expect_normalize("+7", "+74951234567", "84951234567");
+    expect_normalize("+7", "+4930123456",  "810 49 30123456");
+
+    // Australia: trunk "0", escape "0011" — the longer escape must win over
+    // the trunk prefix it starts with.
+    expect_normalize("+61", "+61212345678", "0212345678");
+    expect_normalize("+61", "+4930123456",  "00114930123456");
+
+    // An unknown country code falls back to the "0"/"00" majority.
+    expect_normalize("+999", "+99930123456", "030123456");
+}
+
+static void test_same_call_id(void)
+{
+    expect_same_call_id(true,  "abc@host", "abc@host");
+    expect_same_call_id(true,  "ABC@Host", "abc@host");    // case-insensitive
+    expect_same_call_id(false, "abc@host", "def@host");
+    expect_same_call_id(false, "",         "abc@host");
+    expect_same_call_id(false, "abc@host", "");
+    expect_same_call_id(false, NULL,       "abc@host");
+    expect_same_call_id(false, "abc@host", NULL);
+}
+
+// Sample SDP body as received from a real Fritz!Box INVITE (slightly
+// trimmed). The parsers operate on the full message — SIP headers
+// present or not — so we test both forms.
+static const char *SAMPLE_SDP =
+    "v=0\r\n"
+    "o=user 8030809 8030809 IN IP4 192.168.178.1\r\n"
+    "s=call\r\n"
+    "c=IN IP4 192.168.178.1\r\n"
+    "t=0 0\r\n"
+    "m=audio 7078 RTP/AVP 9 8 0 120 121 101\r\n"
+    "a=rtpmap:120 PCMA/16000\r\n";
+
+static const char *SAMPLE_INVITE_WITH_SDP =
+    "INVITE sip:a@b SIP/2.0\r\n"
+    "Via: SIP/2.0/UDP x\r\n"
+    "From: <sip:c@d>;tag=x\r\nTo: <sip:e@f>\r\n"
+    "Call-ID: abc\r\nCSeq: 1 INVITE\r\n"
+    "Content-Type: application/sdp\r\nContent-Length: 120\r\n\r\n"
+    "v=0\r\nc=IN IP4 10.20.30.40\r\n"
+    "m=audio 49170 RTP/AVP 8\r\na=rtpmap:8 PCMA/8000\r\n";
+
+static void test_parse_sdp(void)
+{
+    expect_sdp_ip("192.168.178.1", SAMPLE_SDP);
+    expect_sdp_port(7078,           SAMPLE_SDP);
+    expect_sdp_ip("10.20.30.40",    SAMPLE_INVITE_WITH_SDP);
+    expect_sdp_port(49170,          SAMPLE_INVITE_WITH_SDP);
+    // Absent SDP.
+    expect_sdp_ip("",               SAMPLE_INVITE);
+    expect_sdp_port(0,              SAMPLE_INVITE);
+    // Empty.
+    expect_sdp_ip("",               "");
+    expect_sdp_port(0,              "");
+    // "c=" mentioned in a header value (not line-anchored) must not match.
+    expect_sdp_ip("", "Subject: note c=IN IP4 1.2.3.4 inline\r\n\r\n");
+}
+
+// Real Telekom IMS INVITE SDP (from the field log): RTP/SAVP with two
+// SDES crypto suites, _80 first, _32 second.
+static const char *TELEKOM_SDP =
+    "v=0\r\n"
+    "o=ccs-0-615-3 06123797321659 409780904 IN IP4 217.0.167.35\r\n"
+    "s=-\r\n"
+    "c=IN IP4 217.0.167.35\r\n"
+    "t=0 0\r\n"
+    "m=audio 11262 RTP/SAVP 112 116 8 0 110\r\n"
+    "a=sendrecv\r\n"
+    "a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:qdLu16UGSfeXENoHNrgwDG7onl1nuMyV6fSi+b/J\r\n"
+    "a=crypto:2 AES_CM_128_HMAC_SHA1_32 inline:lWibhEBAiok3IZoRKNDJWN03QHuVqDNhPRxV3xUU\r\n"
+    "a=rtpmap:8 PCMA/8000\r\n";
+
+static void expect_savp(int expected, const char *msg)
+{
+    int got = parse_sdp_audio_savp(msg, (int)strlen(msg));
+    report_int("parse_sdp_audio_savp", msg, expected, got);
+}
+
+static void expect_crypto(int expected_tag, const char *expected_key,
+                          const char *msg)
+{
+    char key[64] = {0};
+    int tag = parse_sdp_crypto(msg, (int)strlen(msg), key, sizeof(key));
+    report_int("parse_sdp_crypto tag", msg, expected_tag, tag);
+    report_str("parse_sdp_crypto key", msg, expected_key, key);
+}
+
+static void test_parse_sdp_crypto(void)
+{
+    // Telekom offer: SAVP transport, picks the _80 suite (tag 1) and its
+    // inline key, ignoring the _32 suite on tag 2.
+    expect_savp(1, TELEKOM_SDP);
+    expect_crypto(1, "qdLu16UGSfeXENoHNrgwDG7onl1nuMyV6fSi+b/J", TELEKOM_SDP);
+
+    // Plain Fritz!Box offer: AVP, no crypto.
+    expect_savp(0, SAMPLE_SDP);
+    expect_crypto(0, "", SAMPLE_SDP);
+
+    // Only the unsupported _32 suite offered → no match.
+    expect_crypto(0, "",
+        "m=audio 5000 RTP/SAVP 8\r\n"
+        "a=crypto:7 AES_CM_128_HMAC_SHA1_32 inline:abc\r\n");
+
+    // inline key with trailing |lifetime|MKI parameters must be trimmed.
+    expect_crypto(3, "Zm9vYmFy",
+        "m=audio 5000 RTP/SAVP 8\r\n"
+        "a=crypto:3 AES_CM_128_HMAC_SHA1_80 inline:Zm9vYmFy|2^20|1:4\r\n");
+
+    // Empty / absent.
+    expect_savp(0, "");
+    expect_crypto(0, "", "");
+}
+
+static void test_pcm_to_alaw(void)
+{
+    // Reference values for the classic G.711 A-law encoding.
+    expect_alaw(0xD5,  0);            // zero / silence
+    expect_alaw(0xAA,  32767);        // positive full scale (after 13-bit)
+    expect_alaw(0x2A, -32768);        // negative full scale
+    // Symmetric: +/-1 flips the sign bit.
+    expect_alaw(0xD5,  7);            // still within the smallest segment
+    expect_alaw(0x55, -8);
+    // Monotonicity spot-check: larger positive PCM → different A-law byte
+    // (exact values follow G.711, we pin a few so the encoder can't be
+    // silently changed).
+    expect_alaw(0xFA,  1000);
+    expect_alaw(0x7A, -1000);
+}
+
+// ---------------------------------------------------------------------------
+
+int main(void)
+{
+    test_parse_method();
+    test_parse_status_code();
+    test_parse_reason_phrase();
+    test_parse_register_expires();
+    test_parse_cseq();
+    test_parse_call_id();
+    test_find_header();
+    test_parse_via_received();
+    test_parse_tag();
+    test_parse_uri();
+    test_user_from_uri();
+    test_parse_display_name();
+    test_is_phone_number_like();
+    test_is_known_contact();
+    test_looks_dialable();
+    test_normalize_de();
+    test_normalize_e164_foreign();
+    test_normalize_e164_dial_rules();
+    test_same_call_id();
+    test_parse_sdp();
+    test_parse_sdp_crypto();
+    test_pcm_to_alaw();
+
+    printf("%d tests, %d failures\n", g_tests, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}

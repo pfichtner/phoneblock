@@ -3,6 +3,7 @@ package de.haumacher.phoneblock.location;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,7 +36,73 @@ public class Countries {
 		Map<String, Country> byISO31661Alpha2 = new LinkedHashMap<>();
 		Map<String, List<Country>> byDialPrefix = new LinkedHashMap<>();
 		Map<String, List<Country>> byLang = new LinkedHashMap<>();
-		
+
+		// Load trunk and international prefixes from CSV
+		// Note: The CSV uses Country_Code as dial prefix (not ISO code)
+		Map<String, List<String>> trunkPrefixMap = new HashMap<>();
+		Map<String, List<String>> internationalPrefixMap = new HashMap<>();
+
+		try (InputStream csvIn = Countries.class.getResourceAsStream("trunk-prefixes.csv")) {
+			if (csvIn != null) {
+				com.opencsv.CSVParser parser = new com.opencsv.CSVParserBuilder()
+						.withSeparator(';')
+						.build();
+				CSVReaderHeaderAware csvReader = new com.opencsv.CSVReaderHeaderAwareBuilder(
+						new InputStreamReader(csvIn, StandardCharsets.UTF_8))
+						.withCSVParser(parser)
+						.build();
+				Map<String, String> csvLine;
+				while ((csvLine = csvReader.readMap()) != null) {
+					String countryCodes = csvLine.get("Country_Code");
+					String internationalPrefix = csvLine.get("International_Prefix");
+					String trunkPrefix = csvLine.get("Trunk_Prefix");
+
+					if (countryCodes != null && !countryCodes.isEmpty()) {
+						// Parse country codes (may contain multiple values separated by /)
+						List<String> codes = Arrays.stream(countryCodes.split("/"))
+								.map(String::strip)
+								.filter(c -> !c.isEmpty())
+								.toList();
+
+						// Parse international prefix (may contain multiple values separated by /)
+						List<String> intPrefixes = null;
+						if (internationalPrefix != null && !internationalPrefix.isEmpty()) {
+							intPrefixes = Arrays.stream(internationalPrefix.split("/"))
+									.map(String::strip)
+									.filter(p -> !p.isEmpty())
+									.toList();
+						}
+
+						// Parse trunk prefix (may contain multiple values separated by /)
+						List<String> tPrefixes = null;
+						if (trunkPrefix != null && !trunkPrefix.isEmpty()) {
+							tPrefixes = Arrays.stream(trunkPrefix.split("/"))
+									.map(String::strip)
+									.filter(p -> !p.isEmpty())
+									.toList();
+						} else if (trunkPrefix != null) {
+							// Empty trunk prefix means country doesn't use trunk prefixes
+							// Create a list with one empty string to distinguish from "no data"
+							tPrefixes = Collections.singletonList("");
+						}
+
+						// Map each country code to the prefixes
+						for (String code : codes) {
+							if (intPrefixes != null && !intPrefixes.isEmpty()) {
+								internationalPrefixMap.put(code, intPrefixes);
+							}
+							if (tPrefixes != null && !tPrefixes.isEmpty()) {
+								trunkPrefixMap.put(code, tPrefixes);
+							}
+						}
+					}
+				}
+			}
+		} catch (IOException | CsvValidationException e) {
+			System.err.println("Warning: Could not load trunk-prefixes.csv: " + e.getMessage());
+			e.printStackTrace();
+		}
+
         try (InputStream in = Countries.class.getResourceAsStream("country-codes.csv")) {
 			CSVReaderHeaderAware reader = new CSVReaderHeaderAware(new InputStreamReader(in, StandardCharsets.UTF_8));
 	        Map<String, String> line;
@@ -66,9 +133,32 @@ public class Countries {
 	        		}
 	        		}
 	        	}
-	        	
+
+	        	// Set trunk and international prefixes from CSV mapping using dial prefixes
+	        	// The trunk-prefixes.csv uses Country_Code (dial prefix) as the key
+	        	for (String dialPrefix : country.getDialPrefixes()) {
+	        		// Remove the leading "+" to match the CSV format
+	        		String dialCode = dialPrefix.startsWith("+") ? dialPrefix.substring(1) : dialPrefix;
+
+	        		List<String> trunkPrefixes = trunkPrefixMap.get(dialCode);
+	        		if (trunkPrefixes != null && !trunkPrefixes.isEmpty()) {
+	        			country.setTrunkPrefixes(trunkPrefixes);
+	        		}
+
+	        		List<String> internationalPrefixes = internationalPrefixMap.get(dialCode);
+	        		if (internationalPrefixes != null && !internationalPrefixes.isEmpty()) {
+	        			country.setInternationalPrefixes(internationalPrefixes);
+	        		}
+
+	        		// If we found prefixes for this dial code, no need to check others
+	        		if ((trunkPrefixes != null && !trunkPrefixes.isEmpty()) ||
+	        		    (internationalPrefixes != null && !internationalPrefixes.isEmpty())) {
+	        			break;
+	        		}
+	        	}
+
 	        	byISO31661Alpha2.put(country.getISO31661Alpha2(), country);
-	        	
+
 	        	for (String lang : country.getLanguages()) {
 	        		byLang.computeIfAbsent(lang, x -> new ArrayList<>()).add(country);
 	        	}
@@ -79,7 +169,7 @@ public class Countries {
 		} catch (IOException | CsvValidationException e) {
 			e.printStackTrace();
 		}
-		
+
         BY_ISO_31661_ALPHA_2 = Collections.unmodifiableMap(byISO31661Alpha2);
         BY_DIAL_PREFIX = Collections.unmodifiableMap(byDialPrefix);
         BY_LANG = Collections.unmodifiableMap(byLang);
@@ -99,7 +189,7 @@ public class Countries {
 	public static void main(String[] args) {
 		List<Country> codes = new ArrayList<>(BY_ISO_31661_ALPHA_2.values());
 		for (Country code : codes) {
-			System.out.println(code.getISO31661Alpha2() + " - " + code.getDialPrefixes() + " - " + code.getOfficialNameEn());
+			System.out.println(code.getISO31661Alpha2() + " - " + code.getDialPrefixes() + " - Trunk:" + code.getTrunkPrefixes() + " - Intl:" + code.getInternationalPrefixes() + " - " + code.getOfficialNameEn());
 		}
 
 		List<String> langs= new ArrayList<>(BY_LANG.keySet());
@@ -120,15 +210,15 @@ public class Countries {
 		return BY_ISO_31661_ALPHA_2.get(iso31661alpha2);
 	}
 
-	public static String selectDialPrefix(String dialPrefix) {
-		return fromDialPrefix(dialPrefix) == null ? null : dialPrefix;
+	public static String normalizeDialPrefix(String selectedDialPrefix, String defaultDialPrefix) {
+		return countriesFromDialPrefix(selectedDialPrefix) == null ? defaultDialPrefix : selectedDialPrefix;
 	}
 
 	public static Collection<Country> all() {
 		return BY_ISO_31661_ALPHA_2.values();
 	}
 
-	public static List<Country> fromDialPrefix(String dialPrefix) {
+	public static List<Country> countriesFromDialPrefix(String dialPrefix) {
 		return BY_DIAL_PREFIX.get(dialPrefix);
 	}
 }

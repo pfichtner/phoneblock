@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head th:replace="~{../fragments/page :: head(titleKey='page.mobile.response.title', descriptionKey=null, titleText=null, descriptionText=null)}"></head>
+
+<body th:dir="${currentLang.direction}">
+
+<div th:replace="~{../fragments/mobile :: header}"></div>
+
+<section class="section">
+<div class="content">
+
+<h1 data-tx="t0001:1bd232b9">Finalizar enlace</h1>
+
+<p data-tx="t0008:39b22977">Si ve esta página, su navegador no ha reenviado el enlace a su aplicación PhoneBlock. Haga clic en el siguiente botón para abrir el enlace en la aplicación:</p>
+
+<p>
+	<a class="button is-primary" th:href="|intent://phoneblock.net${contextPath}/mobile/response?loginToken=${loginToken}#Intent;scheme=https;package=de.haumacher.phoneblock_mobile;end|">
+		<span class="icon"><i class="fa-solid fa-mobile-screen"></i></span>
+		<span data-tx="t0009:70167705">Abrir en aplicación</span>
+	</a>
+</p>
+
+<p data-tx="t0010:a6c05ee6">Si esto tampoco funciona, abra esta página manualmente "en la aplicación". Para ello, abre el menú de la parte inferior:</p>
+
+<img alt="Abrir menú" data-tx="t0003:4910225c" th:src="@{/assets/img/mobile/connect-1.png}"/>
+	
+<p data-tx="t0004:2210ca0d">Y selecciona la opción "Abrir con app":</p>
+
+<img alt="Opción &quot;Abrir con aplicación" data-tx="t0005:7971c7c3" th:src="@{/assets/img/mobile/connect-2.png}"/>
+
+<p data-tx="t0006:4da0a1ad">Su código de autorización: <code id="loginToken" th:text="${loginToken}"></code><a class="copyToClipboard" data-tx="t0007:3f7efe41" id="loginToken_" title="Copiar en el portapapeles."><i class="fa-solid fa-copy"></i></a></p>
+
+</div>
+</section>
+
+<div th:replace="~{../fragments/mobile :: footer}"></div>
+
+</body>
+</html>

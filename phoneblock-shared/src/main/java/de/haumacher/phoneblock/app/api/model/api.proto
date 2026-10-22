@@ -3,6 +3,10 @@ package de.haumacher.phoneblock.app.api.model;
 option NoInterfaces;
 option NoBinary;
 option NoReflection;
+option NoListener;
+
+// Generator has problems with repeated primitive types.
+// option DartLib = "../../../../phoneblock_mobile/lib/api.dart";
 
 /**
  * Information that must be requested to start a registration process.
@@ -122,14 +126,14 @@ message RateRequest {
 message PhoneInfo {
 	/** The number being requested. */
 	string phone;
-	
+
 	/** The number of votes that support blocking the requested number. */
 	int votes;
-	
+
 	/** The rating for the requested phone number. */
 	Rating rating;
 
-	/** 
+	/**
 	 * The number of votes when also considering votes for numbers that have all but the last two digits in common with the requested number.
 	 *
 	 * <p>
@@ -138,17 +142,107 @@ message PhoneInfo {
 	 */
 	int votesWildcard;
 
-	/** Whether this number is on the white list and therefore cannot receive votes. */	
+	/** Whether this number is on the white list and therefore cannot receive votes. */
 	boolean whiteListed;
-	
-	/** Whether this number no longer is on the blocklist, because no votes have been received for a long time. */	
+
+	/** Whether this number is on the requesting user's personal block list. */
+	boolean blackListed;
+
+	/**
+	 * @deprecated Always <code>false</code>. Kept only for backwards compatibility with API clients
+	 *             written against v1.6.0 and earlier that read this field. The binary archive flag
+	 *             was replaced by the decay-aware {@link #getVotes()} value (issue #342): a number
+	 *             that stops being active now fades smoothly through the visibility threshold instead
+	 *             of flipping a separate <code>archived</code> bit. New clients must rely on
+	 *             {@link #getVotes()} / {@link #getHeat()} and ignore this field; it will be removed
+	 *             in a future API version.
+	 */
 	boolean archived;
 
-	/** Date when this number was added to the SPAM database (in milliseconds since epoch). */	
+	/** Date when this number was added to the SPAM database (in milliseconds since epoch). */
 	long dateAdded;
 
-	/** Date when the last report for this number was received (in milliseconds since epoch). */	
+	/** Date when the last report for this number was received (in milliseconds since epoch). */
 	long lastUpdate;
+
+	/** The phone number formatted for local display (e.g., "(DE) 030 12345678"). */
+	@Nullable
+	string label;
+
+	/** The city or region from where the call originated (e.g., "Berlin"). */
+	@Nullable
+	string location;
+
+	/**
+	 * The comment that the requesting user has previously stored for this number, or <code>null</code>.
+	 *
+	 * <p>
+	 * Only populated when the request is authenticated and a comment was previously submitted by the same user (e.g., via the {@code /rate} endpoint). This is the user's own note about the number, not a community comment.
+	 * </p>
+	 */
+	@Nullable
+	string userComment;
+
+	/**
+	 * Recent-activity rate in reports per day, derived from the confidence model (issue #300).
+	 *
+	 * <p>
+	 * The current reports-per-day rate, derived from the decayed <code>HEAT</code> EMA at request time — how loud this number is <em>right now</em>, with a half-life of about two weeks. At a steady rate of <i>r</i> reports per day it converges to ≈ <i>r</i>, so the value reads directly as that rate without needing to know the decay constant. Drives ranking on space-limited lists (Fritz!Box phonebook, dongle) and Heat-based archiving — it is <em>not</em> the spam-or-not signal; that is {@link #spamConfidence}.
+	 * </p>
+	 */
+	double heat;
+
+	/**
+	 * Confidence (0–100) that this number is spam, derived from the confidence model (issue #300).
+	 *
+	 * <p>
+	 * Computed as a Wilson lower bound on <code>SPAM_EVIDENCE / (SPAM_EVIDENCE + LEGIT_EVIDENCE)</code>, decayed to the request time on a ~4-month half-life. The evidence mass <code>SPAM + LEGIT</code> is the denominator, so a number with two spam reports and nothing else reads low confidence ("maybe accidental"), and a hotly-contested number with 1000 reports each side also reads low ("disputed"). High values require both directional evidence <em>and</em> mass.
+	 * </p>
+	 */
+	int spamConfidence;
+
+	/**
+	 * Total number of calls from this number that PhoneBlock has intercepted.
+	 *
+	 * <p>
+	 * A monotonic lifetime counter (<code>NUMBERS.CALLS</code>) incremented once per intercepted call: a call answered by the cloud answer bot, or a call reported as blocked by the mobile app or dongle via <code>/api/report-call</code>. Unlike {@link #getVotes()} and {@link #getHeat()} this value does not decay; it reflects the cumulative protection PhoneBlock provided for this number.
+	 * </p>
+	 */
+	int calls;
+}
+
+/** A single aggregated SPAM range matching a hash prefix in a {@link PrefixCheckResult}. */
+message RangeMatch {
+	/** The plaintext prefix of the aggregated range (e.g. "+4930123"). */
+	string prefix;
+
+	/** Aggregated number of SPAM votes for all numbers in this range. */
+	int votes;
+
+	/** Number of distinct SPAM numbers known for this range. */
+	int cnt;
+}
+
+/**
+ * Response of the privacy-preserving k-anonymity prefix lookup
+ * (see {@link de.haumacher.phoneblock.app.api.PrefixCheckServlet}).
+ *
+ * <p>
+ * The server returns all SPAM numbers / range aggregations whose SHA-1 hashes
+ * start with the provided hex prefixes. The client matches the entries
+ * against its own (locally-hashed) number to decide whether the caller is on
+ * the blocklist — the server never sees the plaintext number.
+ * </p>
+ */
+message PrefixCheckResult {
+	/** Phone numbers whose SHA-1 hash starts with the {@code sha1} prefix from the request. */
+	repeated PhoneInfo numbers;
+
+	/** 10-digit range aggregations whose SHA-1 hash starts with the {@code prefix10} prefix from the request. Empty if no {@code prefix10} was supplied or no match was found. */
+	repeated RangeMatch range10;
+
+	/** 100-digit range aggregations whose SHA-1 hash starts with the {@code prefix100} prefix from the request. Empty if no {@code prefix100} was supplied or no match was found. */
+	repeated RangeMatch range100;
 }
 
 /** Info about how often a number was searched. */
@@ -182,21 +276,32 @@ message RatingInfo {
 message Blocklist {
 	/** Numbers in the blocklist. */
 	repeated BlockListEntry numbers;
+
+	/** Current version of the blocklist for incremental synchronization. */
+	long version;
 }
 
 abstract message AbstractNumberInfo {
 
 	/** The number being requested. */
 	string phone;
-	
-	/** Whether the number is considered active. Only active numbers are inserted into a blocklist. */
-	boolean active;
-	
+
 	int calls;
-	
-	/** The number of votes that support blocking the requested number. */
-	int votes;
-	
+
+	/**
+	 * Raw cumulative net spam-vote counter from the DB row (#342).
+	 *
+	 * <p>This is the on-disk write-path counter, <em>not</em> the decay-aware
+	 * vote-equivalent that {@code /api/check} or {@code BlockListEntry.votes}
+	 * expose to clients. Use {@code Ema.decode} on the matching
+	 * {@code SPAM_EVIDENCE} / {@code LEGIT_EVIDENCE} columns whenever you
+	 * need a value to compare against a visibility threshold; this field is
+	 * only the right answer for write-side bookkeeping (rating-category
+	 * resolver, {@code NUMBERS_HISTORY} snapshots, internal aggregation
+	 * promotion, migration hooks).</p>
+	 */
+	int rawVotes;
+
 	/** The number ratings of kind "legitimate". */
 	int ratingLegitimate;
 
@@ -245,12 +350,15 @@ message NumberHistory extends AbstractNumberInfo {
 message BlockListEntry {
 	/** The number being requested. */
 	string phone;
-	
+
 	/** The number of votes that support blocking the requested number. */
 	int votes;
-	
+
 	/** The rating for the requested phone number. */
 	Rating rating;
+
+	/** Timestamp (millis since epoch) of the last activity for this number. */
+	long lastActivity;
 }
 
 message Ratings {
@@ -298,7 +406,6 @@ message SpamReport {
 	int votes;
 	long lastUpdate;
 	long dateAdded;
-	boolean archived;
 	boolean whiteListed;
 	
 	/** The number of phone numbers with the the same prefix but a different end digit that are also reported as SPAM. */
@@ -329,22 +436,27 @@ message SpamReport {
 message PhoneNumer {
 	/** The representation stored in the database. */
 	string id;
-	
+
 	/** The local number with country ID prefx. */
 	string shortcut;
-	
+
 	string plus;
+
+	/** International format with "00" prefix (legacy, for backward compatibility and DB operations). */
 	string zeroZero;
-	
+
+	/** International format with the user's country-specific international prefix. This is the format a user would actually dial from their country (e.g., "011" for USA, "00" for most European countries, "810" for Russia). */
+	string dial;
+
 	string countryCode;
 	string country;
-	
+
 	@Nullable
 	string cityCode;
-	
+
 	@Nullable
 	string city;
-	
+
 	/** The kind of number */
 	@Nullable
 	string usage;
@@ -352,25 +464,105 @@ message PhoneNumer {
 
 message SearchResult {
 	string phoneId;
-	
+
 	PhoneNumer number;
-	
+
 	repeated UserComment comments;
-	
+
 	PhoneInfo info;
-	
+
 	repeated int searches;
-	
+
 	string aiSummary;
-	
+
 	repeated string relatedNumbers;
-	
+
 	string prev;
-	
+
 	string next;
-	
+
 	Rating topRating;
-	
+
 	map<Rating,int> ratings;
+}
+
+/** Base message with common account settings fields. */
+abstract message AccountData {
+	/** The preferred language tag (e.g., "de", "en-US", "pt-BR"). */
+	@Nullable
+	string lang;
+
+	/** The user's country dial prefix (e.g., "+49", "+1", "+351"). */
+	@Nullable
+	string dialPrefix;
+
+	/** The user's display name. */
+	@Nullable
+	string displayName;
+}
+
+/** Request to update user account settings. */
+message UpdateAccountRequest extends AccountData {
+	// Inherits lang, dialPrefix, displayName from AccountData
+
+	/** ISO 3166-1 alpha-2 country code (e.g., "DE", "US", "BR"). If provided, the server will convert it to the corresponding dial prefix. */
+	@Nullable
+	string countryCode;
+}
+
+/** Response from account settings operations. */
+message AccountSettings extends AccountData {
+	/** The user's login name (used for CardDAV URL construction). */
+	@Nullable
+	string login;
+
+	/** The user's email address. */
+	@Nullable
+	string email;
+
+	/**
+	 * The minimum confidence ("Mindest-Konfidenz") configured in the account settings: the
+	 * number of votes a number needs before the user's devices treat it as SPAM. Clients
+	 * without a setting of their own (e.g. a self-hosted answerbot) use this value.
+	 */
+	int minVotes;
+
+	/**
+	 * Whether the account settings enable wildcard (number range) blocking.
+	 */
+	boolean wildcards;
+}
+
+/** Entry in a personalized number list with optional comment. */
+message PersonalizedNumber {
+	/** The phone number in international format (for API communication). */
+	string phone;
+
+	/** The phone number formatted according to user's locale/country (for display). */
+	@Nullable
+	string label;
+
+	/** User's comment for this number (may be null). */
+	@Nullable
+	string comment;
+
+	/** User's rating for this number (may be null). */
+	@Nullable
+	Rating rating;
+
+	/** Timestamp when this entry was added to the personalization list (milliseconds since epoch). */
+	long created;
+
+	/**
+	 * Whether {@link #phone} is a prefix wildcard (#377) rather than an exact number: every
+	 * number starting with the prefix is blocked, but only on the user's own devices.
+	 */
+	boolean wildcard;
+}
+
+/** A list of phone numbers (used for blacklist/whitelist responses). */
+message NumberList {
+	/** Phone numbers with optional comments. */
+	repeated PersonalizedNumber numbers;
 }
 

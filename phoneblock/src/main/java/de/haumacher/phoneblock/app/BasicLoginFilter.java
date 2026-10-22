@@ -13,16 +13,25 @@ import org.slf4j.LoggerFactory;
 
 import de.haumacher.phoneblock.ab.CreateABServlet;
 import de.haumacher.phoneblock.ab.ListABServlet;
+import de.haumacher.phoneblock.app.api.AccountManagementServlet;
 import de.haumacher.phoneblock.app.api.BlocklistServlet;
+import de.haumacher.phoneblock.app.api.LoginTicketServlet;
+import de.haumacher.phoneblock.app.api.NumServlet;
+import de.haumacher.phoneblock.app.api.PersonalizationServlet;
+import de.haumacher.phoneblock.app.api.PrefixCheckServlet;
 import de.haumacher.phoneblock.app.api.RateServlet;
+import de.haumacher.phoneblock.app.api.ReportCallServlet;
 import de.haumacher.phoneblock.app.api.SearchApiServlet;
 import de.haumacher.phoneblock.app.api.SpamCheckServlet;
 import de.haumacher.phoneblock.app.api.TestConnectServlet;
-import de.haumacher.phoneblock.callreport.CallReportServlet;
 import de.haumacher.phoneblock.carddav.CardDavServlet;
+import de.haumacher.phoneblock.dongle.coredump.CoredumpServlet;
+import de.haumacher.phoneblock.diag.DiagnosticsApiServlet;
+import de.haumacher.phoneblock.dongle.logreport.LogReportServlet;
 import de.haumacher.phoneblock.db.settings.AuthToken;
 import de.haumacher.phoneblock.util.ServletUtil;
 import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,13 +44,22 @@ import jakarta.servlet.http.HttpServletResponse;
 @WebFilter(urlPatterns = {
 	CreateABServlet.PATH,
 	ListABServlet.PATH,
+	AccountManagementServlet.PATH,
+	PersonalizationServlet.BLACKLIST_PATTERN,
+	PersonalizationServlet.WHITELIST_PATTERN,
 	BlocklistServlet.PATH,
 	SpamCheckServlet.PATH,
+	PrefixCheckServlet.PATH,
+	ReportCallServlet.PATTERN,
 	TestConnectServlet.PATH,
 	RateServlet.PATH,
-	CallReportServlet.URL_PATTERN,
+	LoginTicketServlet.PATH,
+	CoredumpServlet.URL_PATTERN,
+	LogReportServlet.URL_PATTERN,
 	SearchApiServlet.PATTERN,
 	CardDavServlet.URL_PATTERN,
+	NumServlet.PREFIX + "/*",
+	DiagnosticsApiServlet.URL_PATTERN,
 })
 public class BasicLoginFilter extends LoginFilter {
 
@@ -55,7 +73,13 @@ public class BasicLoginFilter extends LoginFilter {
 	}
 	
 	@Override
-	protected void requestLogin(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException {
+	protected void requestLogin(HttpServletRequest request, HttpServletResponse response, FilterChain chain) throws IOException, ServletException {
+		if (NumServlet.PREFIX.equals(request.getServletPath())) {
+			// /api/num/* accepts anonymous access; authentication is only used to
+			// apply personal blacklist/whitelist when a valid token is presented.
+			chain.doFilter(request, response);
+			return;
+		}
 		LOG.debug("Requesting authentication for: {}", request.getServletPath());
 		ServletUtil.sendAuthenticationRequest(response);
 	}
@@ -63,27 +87,33 @@ public class BasicLoginFilter extends LoginFilter {
 	@Override
 	protected boolean allowSessionAuth(HttpServletRequest request) {
 		switch (request.getServletPath()) {
-		case TestConnectServlet.PATH: 
+		case TestConnectServlet.PATH:
+		case PrefixCheckServlet.PATH:
+		case ReportCallServlet.PATH:
 			return false;
 		default:
 			return true;
 		}
 	}
-	
+
 	@Override
 	protected boolean allowCookieAuth(HttpServletRequest request) {
 		switch (request.getServletPath()) {
-		case TestConnectServlet.PATH: 
+		case TestConnectServlet.PATH:
+		case PrefixCheckServlet.PATH:
+		case ReportCallServlet.PATH:
 			return false;
 		default:
 			return true;
 		}
 	}
-	
+
 	@Override
 	protected boolean allowBasicAuth(HttpServletRequest request) {
 		switch (request.getServletPath()) {
-		case TestConnectServlet.PATH: 
+		case TestConnectServlet.PATH:
+		case PrefixCheckServlet.PATH:
+		case ReportCallServlet.PATH:
 			return false;
 		default:
 			return true;
@@ -93,19 +123,29 @@ public class BasicLoginFilter extends LoginFilter {
 	@Override
 	protected boolean checkTokenAuthorization(HttpServletRequest request, AuthToken authorization) {
 		switch (request.getServletPath()) {
-		case BlocklistServlet.PATH: 
+		case BlocklistServlet.PATH:
 			return authorization.isAccessDownload();
-		case RateServlet.PATH: 
-		case CallReportServlet.URL_PATTERN: 
+		case RateServlet.PATH:
+		case CoredumpServlet.URL_PATTERN:
+		case LogReportServlet.URL_PATTERN:
+		case ReportCallServlet.PATH:
+		case PersonalizationServlet.BLACKLIST_PATH:
+		case PersonalizationServlet.WHITELIST_PATH:
+		case AccountManagementServlet.PATH:
+		case LoginTicketServlet.PATH:
 			return authorization.isAccessRate();
-		case CreateABServlet.PATH: 
-		case ListABServlet.PATH: 
-		case SearchApiServlet.PREFIX: 
-		case SpamCheckServlet.PATH: 
-		case TestConnectServlet.PATH: 
+		case CreateABServlet.PATH:
+		case ListABServlet.PATH:
+		case SearchApiServlet.PREFIX:
+		case SpamCheckServlet.PATH:
+		case PrefixCheckServlet.PATH:
+		case TestConnectServlet.PATH:
+		case NumServlet.PREFIX:
 			return authorization.isAccessQuery();
-		case CardDavServlet.DIR_NAME: 
+		case CardDavServlet.DIR_NAME:
 			return authorization.isAccessCarddav();
+		case DiagnosticsApiServlet.SERVLET_PATH:
+			return authorization.isAccessDiagnostics();
 		default:
 			LOG.warn("Requesting CardDAV permission for unknown resource: {} - {}", request.getServletPath(), request.getPathInfo());
 			
@@ -114,8 +154,9 @@ public class BasicLoginFilter extends LoginFilter {
 	}
 	
 	@Override
-	protected void setUser(HttpServletRequest req, String userName) {
-		setRequestUser(req, userName);
+	protected void setUser(HttpServletRequest req, AuthContext authContext) {
+		// For API/CardDAV clients, only store in request (no session)
+		setRequestUser(req, authContext);
 	}
 
 }

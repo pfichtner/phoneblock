@@ -1,0 +1,975 @@
+# PhoneBlock JNDI Configuration Reference
+
+This document describes all JNDI configuration options available for PhoneBlock services. JNDI (Java Naming and Directory Interface) properties can be configured in your servlet container (e.g., Tomcat's `context.xml`) or as system properties with dot notation (e.g., `-Ddb.url=...`).
+
+## Configuration Lookup Mechanism
+
+PhoneBlock uses a fallback configuration lookup mechanism:
+
+1. **JNDI lookup** - First tries to load from `java:comp/env/<property>`
+2. **System properties** - Falls back to system properties if JNDI lookup fails
+3. **Default values** - Uses hardcoded defaults if neither is available
+
+JNDI property names use forward slashes (`/`) as separators, while system properties use dots (`.`).
+
+Example:
+- JNDI: `java:comp/env/db/url`
+- System Property: `-Ddb.url=jdbc:h2:...`
+
+---
+
+## Database Configuration
+
+**JNDI Prefix:** `db/`
+**System Property Prefix:** `db.`
+**Source:** `DBService.java`, `DBConfig.java`
+
+Configuration for the embedded H2 database used by PhoneBlock.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `db/url` | String | `jdbc:h2:/var/lib/tomcat10/work/phoneblock/h2` | JDBC connection URL for H2 database file location |
+| `db/user` | String | `phone` | Database username |
+| `db/password` | String | `block` | Database password |
+| `db/port` | Integer | `9095` | TCP port for external database access. Set to `0` to disable DB server |
+| `db/sendHelpMails` | Boolean | `false` | Automatically send help emails when user inactivity is detected |
+| `db/sendWelcomeMails` | Boolean | `false` | Send welcome emails after first blocklist synchronization |
+| `db/monitorIntervalMinutes` | Integer | `5` | Interval for logging H2 store health metrics (file size, fill rate, pinning sessions). Set to `0` to disable |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="db/url" value="jdbc:h2:/var/lib/phoneblock/db/h2" type="java.lang.String"/>
+  <Environment name="db/user" value="phoneblock_user" type="java.lang.String"/>
+  <Environment name="db/password" value="secret123" type="java.lang.String"/>
+  <Environment name="db/port" value="9095" type="java.lang.Integer"/>
+  <Environment name="db/sendHelpMails" value="true" type="java.lang.Boolean"/>
+  <Environment name="db/sendWelcomeMails" value="true" type="java.lang.Boolean"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Ddb.url=jdbc:h2:/var/lib/phoneblock/db/h2 \
+-Ddb.user=phoneblock_user \
+-Ddb.password=secret123 \
+-Ddb.port=9095 \
+-Ddb.sendHelpMails=true \
+-Ddb.sendWelcomeMails=true
+```
+
+---
+
+## SMTP / Mail Service Configuration
+
+**JNDI Prefix:** `smtp/`
+**System Property Prefix:** `smtp.`
+**Source:** `MailServiceStarter.java`
+
+Configuration for outgoing email service (user verification, notifications, DKIM signing).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `smtp/user` | String | Required | SMTP username for authentication |
+| `smtp/password` | String | Required | SMTP password for authentication |
+| `smtp/properties/*` | Context | - | SMTP properties as a sub-context (see JavaMail properties) |
+| `smtp/signingSelector` | String | Optional | DKIM selector for email signing |
+| `smtp/signingDomain` | String | Optional | Domain for DKIM signature |
+| `smtp/signingKey` | String | Optional | Path to PKCS8-encoded RSA private key file for DKIM |
+
+### SMTP Properties
+
+The `smtp/properties` context can contain any JavaMail SMTP properties:
+- `mail.smtp.host` - SMTP server hostname
+- `mail.smtp.port` - SMTP server port
+- `mail.smtp.auth` - Enable authentication (true/false)
+- `mail.smtp.starttls.enable` - Enable STARTTLS (true/false)
+- `smtp.test-only` - If "true", use dummy mail service (no actual emails sent)
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="smtp/user" value="noreply@phoneblock.net" type="java.lang.String"/>
+  <Environment name="smtp/password" value="smtp_password" type="java.lang.String"/>
+  <Environment name="smtp/signingSelector" value="mail" type="java.lang.String"/>
+  <Environment name="smtp/signingDomain" value="phoneblock.net" type="java.lang.String"/>
+  <Environment name="smtp/signingKey" value="/etc/phoneblock/dkim-private.der" type="java.lang.String"/>
+
+  <Environment name="smtp/properties/mail.smtp.host" value="smtp.example.com" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.port" value="587" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.auth" value="true" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.starttls.enable" value="true" type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dsmtp.user=noreply@phoneblock.net \
+-Dsmtp.password=smtp_password \
+-Dsmtp.signingSelector=mail \
+-Dsmtp.signingDomain=phoneblock.net \
+-Dsmtp.signingKey=/etc/phoneblock/dkim-private.der \
+-Dsmtp.properties.mail.smtp.host=smtp.example.com \
+-Dsmtp.properties.mail.smtp.port=587 \
+-Dsmtp.properties.mail.smtp.auth=true \
+-Dsmtp.properties.mail.smtp.starttls.enable=true
+```
+
+---
+
+## OAuth Login Configuration
+
+**JNDI Prefix:** `oauth/`
+**System Property Prefix:** `oauth.`
+**Source:** `UIProperties.java` (`loadRuntimeSettings()`), `PhoneBlockConfigFactory.java`
+
+Credentials for "Login with Google". Without them only the e-mail login is offered (the server logs `Missing credentials for Google authentication`). Before 3.2.7 these values were compiled into the WAR from a local `.phoneblock` file; they are now read at startup, so one WAR serves every deployment.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `oauth/google/id` | String | Optional | Google OAuth client id |
+| `oauth/google/secret` | String | Optional | Google OAuth client secret (never logged) |
+| `oauth/callbackBase` | String | `https://phoneblock.net` | Protocol and host of the OAuth callback URL; the context path and `/oauth/callback` are appended. Set to `http://localhost:8080` for local development. |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="oauth/google/id" value="1234567890-abc.apps.googleusercontent.com" type="java.lang.String"/>
+  <Environment name="oauth/google/secret" value="GOCSPX-..." type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Doauth.google.id=1234567890-abc.apps.googleusercontent.com \
+-Doauth.google.secret=GOCSPX-...
+```
+
+---
+
+## Donation Bank Account
+
+**JNDI Prefix:** `bank/`
+**System Property Prefix:** `bank.`
+**Source:** `UIProperties.java` (`loadRuntimeSettings()`), `EpcQrCodeServlet.java`, `support-banktransfer.html`
+
+The bank account shown on the support page and encoded in the EPC QR code for donations. Without these values the support page shows empty fields. Before 3.2.7 these values were compiled into the WAR from a local `.phoneblock` file.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `bank/receiver` | String | Optional | Account holder |
+| `bank/account` | String | Optional | IBAN (without spaces) |
+| `bank/bic` | String | Optional | BIC |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="bank/receiver" value="Bernhard Haumacher" type="java.lang.String"/>
+  <Environment name="bank/account" value="DE00000000000000000000" type="java.lang.String"/>
+  <Environment name="bank/bic" value="GENODEF1XXX" type="java.lang.String"/>
+</Context>
+```
+
+---
+
+## Comment Classification & Summarization
+
+Comment classification and AI-generated summaries are produced by the standalone
+`phoneblock-tools` classifier (subcommand `classify`), which runs outside of the
+web application as a batch job. The webapp itself no longer consumes any
+OpenAI / ChatGPT JNDI properties — the former `chatgpt.secret` setting has been
+removed.
+
+See `phoneblock-tools/.phoneblock-classifier.template` for the classifier's own
+configuration (`anthropic.api-key`, `anthropic.model`, database credentials).
+
+---
+
+## Answer Bot Configuration
+
+**JNDI Prefix:** `answerbot/`
+**System Property Prefix:** N/A (uses direct JNDI enumeration)
+**Source:** `SipService.java`
+
+Configuration for the SIP-based answer bot that engages spam callers.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `answerbot/configfile` | String | Optional | Path to answer bot configuration file (`.phoneblock` format) |
+| `answerbot/*` | Various | - | Any other properties are passed as command-line style arguments to the answer bot |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="answerbot/configfile" value="/etc/phoneblock/answerbot.conf" type="java.lang.String"/>
+</Context>
+```
+
+**Note:** Most answer bot configuration is done through the configuration file specified by `answerbot/configfile`. Additional properties can be set directly in JNDI and will override file settings.
+
+---
+
+## Location Service Configuration
+
+**JNDI Prefix:** `location.`
+**System Property Prefix:** `location.`
+**Source:** `LocationService.java`
+
+Configuration for IP geolocation using IP2Location databases.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `location.ip4db` | String | Required | Path to IPv4 location database file |
+| `location.ip6db` | String | Required | Path to IPv6 location database file |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="location/ip4db" value="/var/lib/phoneblock/IP2LOCATION-LITE-DB1.BIN" type="java.lang.String"/>
+  <Environment name="location/ip6db" value="/var/lib/phoneblock/IP2LOCATION-LITE-DB1.IPV6.BIN" type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dlocation.ip4db=/var/lib/phoneblock/IP2LOCATION-LITE-DB1.BIN \
+-Dlocation.ip6db=/var/lib/phoneblock/IP2LOCATION-LITE-DB1.IPV6.BIN
+```
+
+**Note:** IP2Location databases are downloaded automatically during Maven build. The service will disable location lookup if databases are not configured.
+
+---
+
+## DNS Service Configuration
+
+**JNDI Prefix:** `dns/`
+**System Property Prefix:** `dns.`
+**Source:** `DnsService.java`
+
+Configuration for the integrated DNS server (used for DynDNS functionality with Fritz!Box devices).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `dns/port` | Integer | `0` (disabled) | UDP port for DNS server. Set to `0` to disable DNS service |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="dns/port" value="53" type="java.lang.Integer"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Ddns.port=53
+```
+
+**Note:** Running on port 53 typically requires root/administrator privileges. The DNS server is optional and only needed for DynDNS functionality.
+
+---
+
+## Web Crawler Configuration
+
+**JNDI Prefix:** `crawler/`
+**System Property Prefix:** N/A
+**Source:** `CrawlerService.java`
+
+Configuration for the optional web crawler that imports spam reports from external sources.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `crawler/url` | String | Optional | URL to crawl for spam reports |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="crawler/url" value="https://example.com/spam-feed" type="java.lang.String"/>
+</Context>
+```
+
+**Note:** The crawler is optional. If no URL is configured or the URL contains Maven placeholders (`${...}`), the crawler will not start.
+
+---
+
+## Google Indexing Service Configuration
+
+**JNDI Prefix:** `google/`
+**System Property Prefix:** N/A
+**Source:** `GoogleUpdateService.java`
+
+Configuration for pushing URL updates to Google's Indexing API.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `google/accountfile` | String | Optional | Path to Google Cloud service account JSON file with Indexing API permissions |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="google/accountfile" value="/etc/phoneblock/google-service-account.json" type="java.lang.String"/>
+</Context>
+```
+
+**Note:**
+- Requires a Google Cloud service account with the "Indexing API" scope enabled
+- The service will be deactivated if no account file is configured
+- Service account must have `https://www.googleapis.com/auth/indexing` scope
+
+---
+
+## IndexNow Service Configuration
+
+**JNDI Prefix:** `indexnow/`
+**System Property Prefix:** N/A
+**Source:** `IndexNowUpdateService.java`
+
+Configuration for pushing URL updates to search engines via the IndexNow protocol (Bing, Yandex, etc.).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `indexnow/key` | String | Optional | API key for IndexNow service |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="indexnow/key" value="abc123..." type="java.lang.String"/>
+</Context>
+```
+
+**Note:** The service will be deactivated if no API key is configured.
+
+---
+
+## Logging Configuration
+
+**JNDI Prefix:** `log/`
+**System Property Prefix:** N/A
+**Source:** `Application.java`
+
+Configuration for tinylog logging framework.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `log/configfile` | String | Optional | Path to tinylog properties configuration file |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="log/configfile" value="/etc/phoneblock/tinylog.properties" type="java.lang.String"/>
+</Context>
+```
+
+**Note:** If not configured, tinylog will use default logging configuration.
+
+---
+
+## IMAP Service Configuration
+
+**JNDI Prefix:** `imap.`
+**System Property Prefix:** `imap.`
+**Source:** `ImapService.java`
+
+Configuration for monitoring IMAP mailbox for donation notifications (PayPal email parsing).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `imap.*` | Various | - | JavaMail IMAP properties (passed to JavaMail Session) |
+| `credits.active` | Boolean | `false` | Enable donation processing |
+| `credits.sendmails` | Boolean | `false` | Send thank you emails to donors |
+
+### Common IMAP Properties
+
+- `mail.imap.user` - IMAP username
+- `mail.imap.password` - IMAP password
+- `mail.imap.host` - IMAP server hostname
+- `mail.imap.port` - IMAP server port (typically 993 for IMAPS)
+- `mail.store.protocol` - Protocol (should be `imaps`)
+- `mail.imap.ssl.enable` - Enable SSL (true/false)
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="imap/mail.imap.host" value="imap.gmail.com" type="java.lang.String"/>
+  <Environment name="imap/mail.imap.port" value="993" type="java.lang.String"/>
+  <Environment name="imap/mail.imap.user" value="donations@phoneblock.net" type="java.lang.String"/>
+  <Environment name="imap/mail.imap.password" value="app_password" type="java.lang.String"/>
+  <Environment name="imap/mail.imap.ssl.enable" value="true" type="java.lang.String"/>
+  <Environment name="credits/active" value="true" type="java.lang.String"/>
+  <Environment name="credits/sendmails" value="true" type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dimap.mail.imap.host=imap.gmail.com \
+-Dimap.mail.imap.port=993 \
+-Dimap.mail.imap.user=donations@phoneblock.net \
+-Dimap.mail.imap.password=app_password \
+-Dimap.mail.imap.ssl.enable=true \
+-Dcredits.active=true \
+-Dcredits.sendmails=true
+```
+
+**Note:** The IMAP service is designed to parse PayPal donation notification emails. It requires both IMAP credentials and donation processing to be enabled.
+
+---
+
+## Mail Check Service Configuration
+
+**JNDI Prefix:** `mailcheck/`
+**System Property Prefix:** N/A
+**Source:** `EMailCheckService.java`
+
+Configuration for checking disposable email addresses. Providers are loaded dynamically via `mailcheck/providers` and each provider reads its own configuration from JNDI.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `mailcheck/providers` | String | Optional | Comma-separated list of fully qualified `DomainCheckProvider` class names to load |
+| `mailcheck/apiKey` | String | Optional | RapidAPI key (used by `RapidAPIProvider`) |
+| `usercheck/apiKey` | String | Optional | UserCheck API key (used by `UserCheckProvider`) |
+
+### Available Providers
+
+| Class | Required JNDI Properties | Description |
+|-------|--------------------------|-------------|
+| `de.haumacher.phoneblock.mail.check.provider.rapidapi.RapidAPIProvider` | `mailcheck/apiKey` | Queries the RapidAPI mailcheck service |
+| `de.haumacher.phoneblock.mail.check.provider.usercheck.UserCheckProvider` | `usercheck/apiKey` | Queries the UserCheck domain API |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="mailcheck/providers" value="de.haumacher.phoneblock.mail.check.provider.rapidapi.RapidAPIProvider,de.haumacher.phoneblock.mail.check.provider.usercheck.UserCheckProvider" type="java.lang.String"/>
+  <Environment name="mailcheck/apiKey" value="your-rapidapi-key" type="java.lang.String"/>
+  <Environment name="usercheck/apiKey" value="your-usercheck-api-key" type="java.lang.String"/>
+</Context>
+```
+
+**Note:**
+- Providers are tried in order; the first one returning a non-null result wins
+- Each provider is only loaded if its required JNDI properties are configured
+- Results are cached in the database to minimize API calls
+- Service automatically handles rate limiting and quota exhaustion
+
+---
+
+## Blocklist Version Service Configuration
+
+**JNDI Prefix:** `blocklist/version/`
+**System Property Prefix:** `blocklist.version.`
+**Source:** `BlocklistVersionService.java`
+
+Configuration for scheduled blocklist versioning (incremental synchronization support).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `blocklist/version/hour` | Integer | `3` | Hour of day to run version assignment (0-23) |
+| `blocklist/version/minute` | Integer | `0` | Minute of hour to run version assignment (0-59) |
+| `blocklist/version/intervalMinutes` | Long | `1440` | Interval between runs in minutes (default: 24 hours) |
+| `blocklist/version/initialDelayMinutes` | Long | `-1` | Initial delay in minutes for testing (-1 = use calculated schedule) |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="blocklist/version/hour" value="3" type="java.lang.Integer"/>
+  <Environment name="blocklist/version/minute" value="0" type="java.lang.Integer"/>
+  <Environment name="blocklist/version/intervalMinutes" value="1440" type="java.lang.Integer"/>
+</Context>
+```
+
+**System Properties (Production):**
+```bash
+-Dblocklist.version.hour=3 \
+-Dblocklist.version.minute=0 \
+-Dblocklist.version.intervalMinutes=1440
+```
+
+**System Properties (Testing - immediate start, 5 minute intervals):**
+```bash
+-Dblocklist.version.initialDelayMinutes=0 \
+-Dblocklist.version.intervalMinutes=5
+```
+
+**Note:**
+- Default schedule runs daily at 3:00 AM
+- The `initialDelayMinutes` property is intended for testing only
+- Setting `initialDelayMinutes` to a non-negative value overrides the scheduled time calculation
+
+---
+
+## Blocklist API Configuration
+
+**JNDI Prefix:** `blocklist/`
+**System Property Prefix:** `blocklist.`
+**Source:** `BlocklistServlet.java`
+
+Configuration for the blocklist download API endpoint (`/api/blocklist`).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `blocklist/minVisibleVotes` | Integer | `10` | Minimum vote threshold for blocklist visibility. Numbers with fewer votes will not be included in blocklist downloads. Must be one of: 2, 4, 10, 20, 50, 100 |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="blocklist/minVisibleVotes" value="10" type="java.lang.Integer"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dblocklist.minVisibleVotes=10
+```
+
+**Note:**
+- The value must be one of the valid blocklist threshold values: 2, 4, 10, 20, 50, 100
+- Invalid values will fall back to the default of 10
+- This setting affects both full blocklist downloads and incremental synchronization
+- For incremental sync, numbers that fall below the threshold are returned with `votes=0` to indicate removal
+- This setting controls what is publicly visible in blocklist downloads; it does not affect user-specific settings
+
+---
+
+## FTC Do Not Call Import Configuration
+
+**JNDI Prefix:** `ftc/`
+**System Property Prefix:** `ftc.`
+**Source:** `FtcImportService.java`
+
+Configuration for the FTC (Federal Trade Commission) Do Not Call complaint data import. When enabled, downloads daily CSV files from ftc.gov containing US spam phone number complaints and stores them in separate FTC tables for hash-based lookup by the mobile app.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `ftc/enabled` | Boolean | `false` | Enable FTC Do Not Call data import |
+| `ftc/schedule/hour` | Integer | `6` | Hour of day (UTC) to run daily import (0-23) |
+| `ftc/schedule/minute` | Integer | `0` | Minute of hour to run daily import (0-59) |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="ftc/enabled" value="true" type="java.lang.Boolean"/>
+  <Environment name="ftc/schedule/hour" value="6" type="java.lang.Integer"/>
+  <Environment name="ftc/schedule/minute" value="0" type="java.lang.Integer"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dftc.enabled=true \
+-Dftc.schedule.hour=6 \
+-Dftc.schedule.minute=0
+```
+
+**Note:**
+- Disabled by default; must be explicitly enabled
+- On first run, bootstraps by importing the last 5 weeks of available data
+- Subsequent runs import only new days since the last successful import
+- FTC CSV files are published weekdays only; weekends and holidays are skipped automatically
+- FTC data is stored in separate tables (FTC_NUMBERS, FTC_REPORTS, FTC_SUBJECTS) and does not modify the community NUMBERS table
+- The imported data is used as a fallback in the mobile app's hash-based spam check when no community votes exist
+
+---
+
+## External Links
+
+**JNDI Prefix:** `link/`
+**System Property Prefix:** `link.`
+**Source:** `ExternalLinkServlet.java`, `src/main/java/link.properties`
+
+Targets of the outgoing links served under `/link/<name>` (the pages link to `/link/github`, `/link/dongle-aliexpress`, … instead of the external URL). The defaults ship inside the web application in `link.properties`; every one of them can be re-pointed per deployment, so a link that goes stale — a sales offer that vanished, a moved documentation page — is fixed **without building and deploying a new web application**.
+
+Names of interest for the dongle hardware sources: `dongle-aliexpress`, `dongle-ebay`. Run `GET /link/<name>` to check what a name currently resolves to; a `{0}` in the target is replaced with the remaining path (used by the per-service number lookups such as `/link/tellows.de/<number>`).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `link/file` | String | *unset* | Path of a properties file in the same format as the bundled `link.properties`. All of its entries are overlaid over the bundled ones, so links can also be **added**. The name `file` is reserved and cannot be used as a link name. |
+| `link/<name>` | String | *from `link.properties`* | Target of a single link, e.g. `link/dongle-ebay`. Applied after `link/file`, hence it wins over that file's value for the same link. |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <!-- Re-point a single offer that vanished: -->
+  <Environment name="link/dongle-ebay" value="&lt;url-of-the-current-offer&gt;" type="java.lang.String"/>
+
+  <!-- …or maintain a whole set of links outside the application: -->
+  <Environment name="link/file" value="/var/lib/phoneblock/link.properties" type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dlink.dongle-ebay=<url-of-the-current-offer>
+-Dlink.file=/var/lib/phoneblock/link.properties
+```
+
+**Notes:**
+- Overrides are read **at servlet startup only** — restart the application (or touch `context.xml`, which makes Tomcat reload the context) after changing them.
+- A missing or unreadable `link/file` is logged as an error and skipped; the bundled links stay in effect.
+- The applied overrides are logged at INFO on startup (`Overrode external link '<name>': <url>`), which is the quickest way to confirm the configuration took effect.
+- Only the URL changes — surrounding page text (shop name, price, delivery time on the dongle page) is part of the template and still needs a deployment.
+
+---
+
+## Dongle Coredump Storage
+
+**JNDI Prefix:** `coredump/`
+**System Property Prefix:** `coredump.`
+**Source:** `CoredumpServlet.java`
+
+Storage location for ELF core dumps that PhoneBlock dongles upload to `/api/dongle/coredump` after a panic-and-reboot. Dumps are written as `<dir>/<firmware-version>/<user>-<yyyyMMdd-HHmmss>.elf` and are at most 52 KB each (matches the dongle's `coredump` flash partition).
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `coredump/dir` | String | *unset* | Filesystem path that receives uploaded dumps. **When unset, the endpoint replies with HTTP 503** and the dongle keeps the dump for the next boot — flipping storage on later reclaims dumps already in the field. |
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="coredump/dir" value="/var/lib/phoneblock/coredumps" type="java.lang.String"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Dcoredump.dir=/var/lib/phoneblock/coredumps
+```
+
+**Symbolicating a stored dump:**
+
+```bash
+# 1. Pull the matching firmware ELF from the CDN release directory:
+wget https://cdn.phoneblock.net/dongle/firmware/<version>/phoneblock_dongle.elf
+
+# 2. Resolve the backtrace (espcoredump.py ships with ESP-IDF):
+espcoredump.py info_corefile -c <user>-<timestamp>.elf phoneblock_dongle.elf
+```
+
+**Notes:**
+- The directory is **not auto-created** as a parent — only the per-version subdirectory beneath it. Create the base path and grant the Tomcat user write access before enabling.
+- No automatic retention; rotate or archive manually. Real-world dumps are rare and small (tens of KB each).
+- Authentication is the same Bearer-token flow as `/api/rate` — the username on the filename is the PhoneBlock account that the dongle was paired with.
+
+---
+
+## Diagnostics Ingestion
+
+**JNDI Prefix:** `diagnostics/`
+**System Property Prefix:** `diagnostics.`
+**Source:** `DiagnosticsService.java`
+
+A scheduled reader that tails the server's rolling log, recognizes source-specific error lines (the dongle reports written by `LogReportServlet`, first), normalizes and scrubs them, and rolls up the `DIAG_*` aggregate tables (see `docs/plans/2026-07-11-diagnostics-framework-design.md`). Decoupled from the request path — nothing writes diagnostics synchronously on a request; the log file is the buffer.
+
+### Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `diagnostics/enabled` | Boolean | `true` | Master switch for the ingestion reader and its retention job. |
+| `diagnostics/logFile` | String | `/var/log/tomcat10/phoneblock.log` | The `writer.latest` base path from `tinylog.properties`; the reader tails its numbered siblings `phoneblock.log.<count>`. **Must match tinylog's `log/file`** or nothing is ingested. |
+| `diagnostics/intervalMinutes` | Integer | `5` | How often the reader polls the log for new lines. |
+| `diagnostics/sampleCap` | Integer | `20` | Max retained raw `DIAG_SAMPLE` rows per signature. |
+| `diagnostics/retentionDays` | Integer | `30` | Age after which raw samples are purged (aggregates are kept indefinitely). |
+| `diagnostics/maxLinesPerPoll` | Integer | `50000` | Upper bound on lines processed per transaction; a larger backlog is caught up over successive polls. |
+| `diagnostics/matchIntervalMinutes` | Integer | `60` | How often the rule matcher evaluates the aggregates. |
+| `diagnostics/quietDays` | Integer | `3` | After this many days without a new event, a latched notification is cleared (rearmed) so a recurrence re-notifies. |
+| `diagnostics/userDailyCap` | Integer | `3` | Max diagnostics help mails per user per day. |
+| `diagnostics/globalDailyCap` | Integer | `100` | Max diagnostics help mails across the fleet per day. |
+| `diagnostics/serverSource` | Boolean | `false` | Also ingest the server's own native WARN/ERROR log lines as `source=SERVER` (the second source). Off by default. |
+| `diagnostics/nodeId` | String | `server` | The `origin_id` used for `SERVER`-source events. |
+| `diagnostics/silenceDays` | Integer | `5` | A dongle whose auth token has not been used (daily self-test) for this many days is treated as silent — nudged via the `"Dongle silent (no contact)"` rule (a heartbeat gap over `TOKENS`, not a log signal). |
+
+### Introspection REST API & token capabilities
+
+The agent-facing REST API lives at `/api/admin/diag/*` and is gated by two `AuthToken`
+capabilities (columns on the `TOKENS` table, minted by a direct DB update — there
+is no UI to create such a token):
+
+- `ACCESS_DIAGNOSTICS` — read signatures/rules, dry-run and author rules into
+  `DRAFT`/`SHADOW`, and create scrub rules (tightening the anonymizer). Required
+  for every `/api/admin/diag` data route.
+- `ACCESS_ADMIN` — the elevated transitions: promoting a rule to `LIVE`, changing
+  a scrub rule's state (relaxing the anonymizer), and the mail kill switch.
+
+`/api/admin/` is the umbrella for admin tooling; diagnostics (`/api/admin/diag/*`)
+is its first area. The admin console (`AdminApiServlet`) serves the **interactive
+Swagger UI** at `GET /api/admin/` and the OpenAPI document at
+`GET /api/admin/openapi.json`; further admin areas add their paths to that same
+spec and appear in the same UI, so the individual admin servlets carry no
+Swagger/OpenAPI plumbing. These two doc routes are served **unauthenticated** (so
+the browser can load the docs before a token is entered); open the UI, click
+*Authorize*, paste a bearer token, then call any endpoint. The endpoints
+themselves stay token-gated as above — the security is the token, not hiding the
+docs (consistent with the interface being internet-accessible by design).
+
+Mint by flipping the flags on an ordinary token, e.g.:
+
+```sql
+UPDATE TOKENS SET ACCESS_DIAGNOSTICS = TRUE WHERE ID = <token-id>;   -- agent token
+UPDATE TOKENS SET ACCESS_ADMIN = TRUE       WHERE ID = <human-token-id>;
+```
+
+Endpoints (all under `/api/admin/diag`, `ACCESS_DIAGNOSTICS` unless noted):
+
+*Read / discover*
+- `GET /signatures` — signature feed (unmatched long tail via `?unmatched=true`).
+- `GET /signatures/{sigId}` — one signature: stats + capped scrubbed samples.
+- `GET /origins/{source}/{originId}/timeline` — one origin's signatures over time.
+- `GET /rules` · `GET /rules/{id}` — detection rules.
+- `GET /rules/{id}/stats` — per-rule notification counts by state.
+- `GET /templates` — mail templates.
+- `GET /scrub` — scrub (anonymizer) rules.
+- `GET /notifications` — sent/pending mail audit (`?ruleId=&state=&since=`).
+- `GET /ingest/status` — reader health: cursor position, lag, aggregate counts.
+
+*Experiment (no side effects)*
+- `POST /rules/dryrun` — project a candidate rule against history.
+- `POST /mail/preview` — render a template with placeholder substitution.
+- `POST /scrub/audit` — scan retained samples for PII shapes still present
+  (optionally test a `candidatePattern`).
+
+*Author / promote*
+- `POST /rules` (creates in `SHADOW`) · `POST /rules/{id}/state`
+  (`LIVE` needs `ACCESS_ADMIN`).
+- `POST /templates` — create/update a mail template.
+- `POST /scrub` — create a scrub rule; a new rule only adds masking, so it lands
+  `LIVE` immediately under `ACCESS_DIAGNOSTICS`.
+- `POST /scrub/{id}/state` — change a scrub rule's state (relaxing / re-enabling);
+  needs `ACCESS_ADMIN`.
+- `POST /killswitch` — flip `diag.mail.enabled` (fleet-wide mail cutoff); needs
+  `ACCESS_ADMIN`.
+
+The **mail kill switch** and the **ruleset version** are runtime rows in the `PROPERTIES` table (not JNDI), so they can be flipped without a redeploy:
+
+- `diag.mail.enabled` (default `false`) — while `false`, no user help mail is ever sent even by a `LIVE`+`USER` rule; this is the master gate on top of per-rule promotion. Set to `true` only once the shadow projections look right.
+- `diag.ruleset.version` — bumped on any rule/template/scrub change; reserved for a future in-memory rule cache (the matcher and the ingest scrubber currently reload rules fresh each run, so anonymizer edits take effect within one ingest interval without a redeploy).
+
+#### Translating the help-mail templates
+
+The `DIAG_TEMPLATE` rows are authored in German (`de`) and read back in the user's language (falling back `lang → en → de`). To fill in every supported locale via DeepL — **over the API, not on the server** — use the `phoneblock-translate-maven-plugin` (a client tool; target languages are derived from the `Language` enum, so they never drift from a hand-kept list):
+
+```bash
+cd phoneblock
+mvn -Pwith-deepl phoneblock-translate:translate-diag-templates \
+  -Dtranslate.apiUrl=https://phoneblock.net/pb-test/api \
+  -Dtranslate.dryRun=true          # drop this to actually write
+```
+
+Both secrets come from `settings.xml` servers (they never touch the command line):
+
+```xml
+<server><id>deepl</id><passphrase>YOUR_DEEPL_API_KEY</passphrase></server>       <!-- shared with auto-translate -->
+<server><id>phoneblock-admin</id><password>YOUR_API_TOKEN</password></server>     <!-- token with ACCESS_DIAGNOSTICS -->
+```
+
+The token needs `ACCESS_DIAGNOSTICS` (the `POST /templates` author route). By default only missing locales are filled; pass `-Dtranslate.overwrite=true` to re-translate existing ones.
+
+### Example Configuration
+
+**Tomcat context.xml:**
+```xml
+<Context>
+  <Environment name="diagnostics/logFile" value="/var/log/tomcat10/phoneblock.log" type="java.lang.String"/>
+  <Environment name="diagnostics/intervalMinutes" value="5" type="java.lang.Integer"/>
+</Context>
+```
+
+**System Properties:**
+```bash
+-Ddiagnostics.logFile=/var/log/tomcat10/phoneblock.log
+```
+
+**Notes:**
+- The reader follows tinylog's monotonic `{count}` segments and ignores the fixed-name `latest` copy (it duplicates the active segment), so lines are counted once. Its checkpoint is persisted in `DIAG_INGEST_CURSOR`.
+- If the reader falls more than `writer.backups` segments behind, the pruned span is lost (logged as a gap) — keep `intervalMinutes` well under the time it takes to roll `backups` segments.
+
+---
+
+## Complete Example Configuration
+
+Here's a complete example Tomcat `context.xml` file with common production settings:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Context>
+  <!-- Database Configuration -->
+  <Environment name="db/url" value="jdbc:h2:/var/lib/phoneblock/db/h2" type="java.lang.String"/>
+  <Environment name="db/user" value="phoneblock" type="java.lang.String"/>
+  <Environment name="db/password" value="secure_password" type="java.lang.String"/>
+  <Environment name="db/port" value="9095" type="java.lang.Integer"/>
+  <Environment name="db/sendHelpMails" value="true" type="java.lang.Boolean"/>
+  <Environment name="db/sendWelcomeMails" value="true" type="java.lang.Boolean"/>
+
+  <!-- SMTP Configuration -->
+  <Environment name="smtp/user" value="noreply@phoneblock.net" type="java.lang.String"/>
+  <Environment name="smtp/password" value="smtp_password" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.host" value="smtp.example.com" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.port" value="587" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.auth" value="true" type="java.lang.String"/>
+  <Environment name="smtp/properties/mail.smtp.starttls.enable" value="true" type="java.lang.String"/>
+  <Environment name="smtp/signingSelector" value="mail" type="java.lang.String"/>
+  <Environment name="smtp/signingDomain" value="phoneblock.net" type="java.lang.String"/>
+  <Environment name="smtp/signingKey" value="/etc/phoneblock/dkim-private.der" type="java.lang.String"/>
+
+  <!-- Google Login -->
+  <Environment name="oauth/google/id" value="1234567890-abc.apps.googleusercontent.com" type="java.lang.String"/>
+  <Environment name="oauth/google/secret" value="GOCSPX-..." type="java.lang.String"/>
+
+  <!-- Donation Bank Account -->
+  <Environment name="bank/receiver" value="Bernhard Haumacher" type="java.lang.String"/>
+  <Environment name="bank/account" value="DE00000000000000000000" type="java.lang.String"/>
+  <Environment name="bank/bic" value="GENODEF1XXX" type="java.lang.String"/>
+
+  <!-- Location Service -->
+  <Environment name="location/ip4db" value="/var/lib/phoneblock/IP2LOCATION-LITE-DB1.BIN" type="java.lang.String"/>
+  <Environment name="location/ip6db" value="/var/lib/phoneblock/IP2LOCATION-LITE-DB1.IPV6.BIN" type="java.lang.String"/>
+
+  <!-- Logging -->
+  <Environment name="log/configfile" value="/etc/phoneblock/tinylog.properties" type="java.lang.String"/>
+
+  <!-- Optional Services (uncomment to enable) -->
+
+  <!-- Google Indexing -->
+  <!-- <Environment name="google/accountfile" value="/etc/phoneblock/google-service-account.json" type="java.lang.String"/> -->
+
+  <!-- IndexNow -->
+  <!-- <Environment name="indexnow/key" value="abc123..." type="java.lang.String"/> -->
+
+  <!-- DNS Server -->
+  <!-- <Environment name="dns/port" value="53" type="java.lang.Integer"/> -->
+
+  <!-- Answer Bot -->
+  <!-- <Environment name="answerbot/configfile" value="/etc/phoneblock/answerbot.conf" type="java.lang.String"/> -->
+
+  <!-- Mail Checker -->
+  <!-- <Environment name="mailcheck/providers" value="de.haumacher.phoneblock.mail.check.provider.rapidapi.RapidAPIProvider" type="java.lang.String"/> -->
+  <!-- <Environment name="mailcheck/apiKey" value="rapidapi-key" type="java.lang.String"/> -->
+
+  <!-- IMAP Donations -->
+  <!-- <Environment name="imap/mail.imap.host" value="imap.gmail.com" type="java.lang.String"/> -->
+  <!-- <Environment name="imap/mail.imap.user" value="donations@phoneblock.net" type="java.lang.String"/> -->
+  <!-- <Environment name="imap/mail.imap.password" value="app_password" type="java.lang.String"/> -->
+  <!-- <Environment name="credits/active" value="true" type="java.lang.String"/> -->
+
+  <!-- Blocklist Configuration -->
+  <Environment name="blocklist/minVisibleVotes" value="10" type="java.lang.Integer"/>
+  <Environment name="blocklist/version/hour" value="3" type="java.lang.Integer"/>
+  <Environment name="blocklist/version/minute" value="0" type="java.lang.Integer"/>
+  <Environment name="blocklist/version/intervalMinutes" value="1440" type="java.lang.Integer"/>
+</Context>
+```
+
+---
+
+## Security Considerations
+
+1. **Credentials:** Never commit JNDI configuration files with real credentials to version control
+2. **File Permissions:** Restrict access to configuration files containing secrets (chmod 600)
+3. **DKIM Keys:** Keep DKIM private key files secure and readable only by the application user
+4. **API Keys:** Rotate API keys regularly and use environment-specific keys
+5. **Database:** Use strong passwords and consider encrypting the H2 database file
+6. **Ports:** Be careful when exposing database ports externally; use firewall rules to restrict access
+
+---
+
+## Troubleshooting
+
+### Configuration Not Loading
+
+1. Check servlet container logs for JNDI-related errors
+2. Verify JNDI names use forward slashes (`/`) not dots
+3. Ensure proper type attributes in `<Environment>` tags
+4. Check that context.xml is in the correct location
+
+### Service Not Starting
+
+1. Check if required properties are configured (marked as "Required" in this document)
+2. Review application logs for specific service initialization errors
+3. Verify file paths (configuration files, databases, keys) are accessible
+4. Check file permissions
+
+### System Properties vs JNDI
+
+If you need to use system properties instead of JNDI:
+
+1. Convert slashes to dots: `db/url` → `db.url`
+2. Pass as JVM arguments: `-Ddb.url=...`
+3. Or set in Tomcat's `setenv.sh`: `CATALINA_OPTS="-Ddb.url=..."`
+
+---
+
+## References
+
+- **Main Application:** `de.haumacher.phoneblock.app.Application`
+- **JNDI Utility:** `de.haumacher.phoneblock.jndi.JNDIProperties`
+- **Configuration Template:** `phoneblock/.phoneblock.template`
+- **Tomcat JNDI:** https://tomcat.apache.org/tomcat-10.1-doc/jndi-resources-howto.html

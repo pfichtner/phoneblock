@@ -1,0 +1,1143 @@
+// ignore: unused_import
+import 'package:intl/intl.dart' as intl;
+import 'app_localizations.dart';
+
+// ignore_for_file: type=lint
+
+/// The translations for Polish (`pl`).
+class AppLocalizationsPl extends AppLocalizations {
+  AppLocalizationsPl([String locale = 'pl']) : super(locale);
+
+  @override
+  String get appTitle => 'PhoneBlock Mobile';
+
+  @override
+  String get settings => 'Ustawienia';
+
+  @override
+  String get deleteAll => 'Usuń wszystko';
+
+  @override
+  String get noCallsYet => 'Nie przefiltrowano jeszcze żadnych połączeń';
+
+  @override
+  String get noCallsDescription =>
+      'PhoneBlock automatycznie sprawdza połączenia przychodzące i blokuje połączenia SPAM.';
+
+  @override
+  String get blocked => 'Zablokowany';
+
+  @override
+  String get accepted => 'Przyjęte';
+
+  @override
+  String get notBlocked => 'Nie zablokowany';
+
+  @override
+  String get missed => 'Brakuje';
+
+  @override
+  String votes(int count) {
+    return '$count głosów';
+  }
+
+  @override
+  String get viewOnPhoneBlock => 'Pokaż na PhoneBlock';
+
+  @override
+  String get confirmDeleteAll => 'Usunąć wszystkie odfiltrowane połączenia?';
+
+  @override
+  String get confirmDeleteAllMessage => 'Tego działania nie można cofnąć.';
+
+  @override
+  String get cancel => 'Anuluj';
+
+  @override
+  String get delete => 'Usuń';
+
+  @override
+  String get settingsTitle => 'Ustawienia';
+
+  @override
+  String get callScreening => 'Filtrowanie połączeń';
+
+  @override
+  String get minSpamReports => 'Minimalna ilość wiadomości SPAM';
+
+  @override
+  String minSpamReportsDescription(int count) {
+    return 'Numery są blokowane począwszy od wiadomości $count.';
+  }
+
+  @override
+  String get blockNumberRanges => 'Zakresy numerów bloków';
+
+  @override
+  String get blockNumberRangesDescription =>
+      'Blokowanie obszarów z wieloma wiadomościami SPAM';
+
+  @override
+  String get minSpamReportsInRange =>
+      'Minimalna ilość wiadomości SPAM w obszarze';
+
+  @override
+  String minSpamReportsInRangeDescription(int count) {
+    return 'Obszary są blokowane od wiadomości $count.';
+  }
+
+  @override
+  String get about => 'O';
+
+  @override
+  String get version => 'Wersja';
+
+  @override
+  String get developer => 'Deweloper';
+
+  @override
+  String get developerName => 'Bernhard Haumacher';
+
+  @override
+  String get diagnosticLog => 'Protokół diagnostyczny';
+
+  @override
+  String get diagnosticLogShare => 'Udział';
+
+  @override
+  String get diagnosticLogClear => 'Usuń';
+
+  @override
+  String get diagnosticLogRefresh => 'Odświeżanie';
+
+  @override
+  String get diagnosticLogEmpty => 'Dziennik jest pusty.';
+
+  @override
+  String get diagnosticLogReadError =>
+      '(Plik dziennika jest obecnie nieczytelny)';
+
+  @override
+  String get diagnosticLogClearConfirmTitle => 'Usunąć dziennik?';
+
+  @override
+  String get diagnosticLogClearConfirmBody =>
+      'Wszystkie wpisy w dzienniku diagnostycznym zostaną usunięte.';
+
+  @override
+  String get diagnosticLogShareSubject => 'Protokół diagnostyczny PhoneBlock';
+
+  @override
+  String get website => 'Strona internetowa';
+
+  @override
+  String get websiteUrl => 'phoneblock.net';
+
+  @override
+  String get sourceCode => 'Kod źródłowy';
+
+  @override
+  String get sourceCodeLicense => 'Open Source (GPL-3.0)';
+
+  @override
+  String get reportProblem => 'Zgłoś problem';
+
+  @override
+  String get reportProblemSubtitle => 'Problemy GitHub';
+
+  @override
+  String get aboutDescription =>
+      'PhoneBlock to projekt open-source bez śledzenia i bez reklam. Usługa jest finansowana z darowizn.';
+
+  @override
+  String get donate => 'Darowizny';
+
+  @override
+  String pendingCallsNotification(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count nowych przefiltrowanych połączeń',
+      one: '1 nowe filtrowane połączenie',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get tapToOpen => 'Stuknij, aby otworzyć aplikację';
+
+  @override
+  String get setupWelcome => 'Witamy w PhoneBlock Mobile';
+
+  @override
+  String get setupPermissionsRequired => 'Wymagane zezwolenia';
+
+  @override
+  String get grantPermission => 'Udzielenie zezwolenia';
+
+  @override
+  String get continue_ => 'Dalej';
+
+  @override
+  String get finish => 'Zakończony';
+
+  @override
+  String get loginRequired => 'Rejestracja w PhoneBlock';
+
+  @override
+  String get loginToPhoneBlock => 'Zarejestruj się w PhoneBlock';
+
+  @override
+  String get verifyingLogin => 'Rejestracja zostanie sprawdzona...';
+
+  @override
+  String get loginFailed => 'Logowanie nie powiodło się';
+
+  @override
+  String get loginSuccess => 'Rejestracja zakończona sukcesem!';
+
+  @override
+  String get reportAsLegitimate => 'Zgłoś jako uzasadniony';
+
+  @override
+  String get reportAsSpam => 'Zgłoś jako SPAM';
+
+  @override
+  String get viewOnPhoneBlockMenu => 'Wyświetl w PhoneBlock';
+
+  @override
+  String get copyNumber => 'Numer kopii';
+
+  @override
+  String get numberCopied => 'Liczba skopiowana do schowka';
+
+  @override
+  String get deleteCall => 'Usuń';
+
+  @override
+  String get report => 'Raport';
+
+  @override
+  String get notLoggedIn => 'Nie zarejestrowano. Zaloguj się.';
+
+  @override
+  String reportedAsLegitimate(String phoneNumber) {
+    return '$phoneNumber zgłoszony jako prawidłowy';
+  }
+
+  @override
+  String reportError(String error) {
+    return 'Błąd podczas raportowania: $error';
+  }
+
+  @override
+  String reportedAsSpam(String phoneNumber) {
+    return '$phoneNumber zgłoszony jako SPAM';
+  }
+
+  @override
+  String get selectSpamCategory => 'Wybierz kategorię SPAM';
+
+  @override
+  String get errorDeletingAllCalls =>
+      'Błąd podczas usuwania wszystkich połączeń';
+
+  @override
+  String get errorDeletingCall => 'Błąd podczas anulowania połączenia';
+
+  @override
+  String get notLoggedInShort => 'Nie zarejestrowany';
+
+  @override
+  String get errorOpeningPhoneBlock => 'Błąd podczas otwierania PhoneBlock.';
+
+  @override
+  String get permissionNotGranted => 'Zezwolenie nie zostało udzielone.';
+
+  @override
+  String get setupTitle => 'PhoneBlock Mobile - konfiguracja';
+
+  @override
+  String get welcome => 'Witamy w';
+
+  @override
+  String get connectPhoneBlockAccount => 'Podłącz konto PhoneBlock';
+
+  @override
+  String get permissions => 'Zezwolenia';
+
+  @override
+  String get allowCallFiltering => 'Zezwalaj na filtrowanie połączeń';
+
+  @override
+  String get done => 'Zakończony';
+
+  @override
+  String get setupComplete => 'Instalacja zakończona';
+
+  @override
+  String get minReportsCount => 'Minimalna liczba wiadomości';
+
+  @override
+  String callsBlockedAfterReports(int count) {
+    return 'Połączenia są blokowane od wiadomości $count';
+  }
+
+  @override
+  String rangesBlockedAfterReports(int count) {
+    return 'Obszary są blokowane od wiadomości $count.';
+  }
+
+  @override
+  String get welcomeMessage =>
+      'Witamy w PhoneBlock Mobile!\n\nTa aplikacja pomaga automatycznie blokować połączenia spamowe. Potrzebne jest bezpłatne konto w serwisie PhoneBlock.net.\n\nPołącz swoje konto PhoneBlock, aby kontynuować:';
+
+  @override
+  String get connectToPhoneBlock => 'Połącz się z PhoneBlock';
+
+  @override
+  String get connectedToPhoneBlock => 'Połączony z PhoneBlock';
+
+  @override
+  String get accountConnectedSuccessfully =>
+      'Konto zostało pomyślnie połączone';
+
+  @override
+  String get permissionsMessage =>
+      'Aby automatycznie blokować połączenia spamowe, PhoneBlock Mobile wymaga autoryzacji do sprawdzania połączeń przychodzących.\n\nAutoryzacja ta jest wymagana do działania aplikacji:';
+
+  @override
+  String get permissionGranted => 'Udzielone zezwolenie';
+
+  @override
+  String get permissionGrantedSuccessfully =>
+      '✓ Autoryzacja została pomyślnie przyznana';
+
+  @override
+  String get setupCompleteMessage =>
+      'Instalacja zakończona!\n\nPhoneBlock Mobile jest teraz gotowy do blokowania połączeń spamowych. Aplikacja automatycznie sprawdza połączenia przychodzące i blokuje znane numery spamowe w oparciu o bazę danych PhoneBlock.\n\nNaciśnij \"Gotowe\", aby przejść do widoku głównego.';
+
+  @override
+  String get verifyingLoginTitle => 'Sprawdź logowanie';
+
+  @override
+  String get loginSuccessMessage => 'Logowanie powiodło się!';
+
+  @override
+  String get redirectingToSetup => 'Przekazywanie do obiektu...';
+
+  @override
+  String tokenVerificationFailed(String error) {
+    return 'Weryfikacja tokena nie powiodła się: $error';
+  }
+
+  @override
+  String get backToSetup => 'Powrót do obiektu';
+
+  @override
+  String get tokenBeingVerified => 'Token jest sprawdzany...';
+
+  @override
+  String get failedToOpenPhoneBlock => 'Nie można otworzyć PhoneBlock.';
+
+  @override
+  String get ratingLegitimate => 'Legalny';
+
+  @override
+  String get ratingAdvertising => 'Reklama';
+
+  @override
+  String get ratingSpam => 'SPAM';
+
+  @override
+  String get ratingPingCall => 'Połączenie ping';
+
+  @override
+  String get ratingGamble => 'Konkurencja';
+
+  @override
+  String get ratingFraud => 'Oszustwo';
+
+  @override
+  String get ratingPoll => 'Ankieta';
+
+  @override
+  String get noLoginTokenReceived => 'Nie otrzymano tokenu logowania.';
+
+  @override
+  String get settingSaved => 'Zapisane ustawienie';
+
+  @override
+  String get errorSaving => 'Błąd podczas zapisywania';
+
+  @override
+  String ratePhoneNumber(String phoneNumber) {
+    return 'Oceń $phoneNumber';
+  }
+
+  @override
+  String reportsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count skarg',
+      one: '1 Skarga',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String rangeReportsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Reklamacje w zakresie liczbowym',
+      one: '1 Skarga w zakresie numerów',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String legitimateReportsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count Legalne wiadomości',
+      one: '1 Legalna wiadomość',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get noReports => 'Brak wiadomości';
+
+  @override
+  String todayTime(String time) {
+    return 'Dzisiaj, $time';
+  }
+
+  @override
+  String yesterdayTime(String time) {
+    return 'Wczoraj, $time';
+  }
+
+  @override
+  String get callHistoryRetention => 'Przechowywanie historii połączeń';
+
+  @override
+  String retentionPeriodDescription(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: 'Zachowaj połączenia $days dni',
+      one: 'Utrzymywanie połączeń przez 1 dzień',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get retentionInfinite => 'Zachowaj wszystkie połączenia';
+
+  @override
+  String retentionDays(int days) {
+    String _temp0 = intl.Intl.pluralLogic(
+      days,
+      locale: localeName,
+      other: '$days dni',
+      one: '1 dzień',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get retentionInfiniteOption => 'Bez ograniczeń';
+
+  @override
+  String get addCommentSpam => 'Dodaj komentarz (opcjonalnie)';
+
+  @override
+  String get commentHintSpam =>
+      'Dlaczego jest to spam? Czego dotyczyła rozmowa? Prosimy o zachowanie uprzejmości.';
+
+  @override
+  String get addCommentLegitimate => 'Dodaj komentarz (opcjonalnie)';
+
+  @override
+  String get commentHintLegitimate =>
+      'Dlaczego jest to uzasadnione? Kto dzwonił? Prosimy o zachowanie uprzejmości.';
+
+  @override
+  String get serverSettings => 'Ustawienia serwera';
+
+  @override
+  String get serverSettingsDescription =>
+      'Zarządzanie ustawieniami konta PhoneBlock';
+
+  @override
+  String get searchNumber => 'Numer wyszukiwania';
+
+  @override
+  String get searchPhoneNumber => 'Wyszukaj numer telefonu';
+
+  @override
+  String get enterPhoneNumber => 'Wprowadź numer telefonu';
+
+  @override
+  String get phoneNumberHint => 'np. +49 123 456789';
+
+  @override
+  String get search => 'Wyszukiwanie';
+
+  @override
+  String get invalidPhoneNumber => 'Wprowadź prawidłowy numer telefonu';
+
+  @override
+  String get blacklistTitle => 'Czarna lista';
+
+  @override
+  String get blacklistDescription => 'Zablokowane numery';
+
+  @override
+  String get whitelistTitle => 'Biała lista';
+
+  @override
+  String get whitelistDescription => 'Numery oznaczone jako legalne';
+
+  @override
+  String get blacklistEmpty => 'Twoja czarna lista jest pusta';
+
+  @override
+  String get whitelistEmpty => 'Biała lista jest pusta';
+
+  @override
+  String get blacklistEmptyHelp =>
+      'Dodaj numery, zgłaszając niechciane połączenia jako spam.';
+
+  @override
+  String get whitelistEmptyHelp =>
+      'Dodaj numery, zgłaszając zablokowane połączenia jako prawidłowe.';
+
+  @override
+  String get errorLoadingList => 'Błąd ładowania listy';
+
+  @override
+  String get numberRemovedFromList => 'Usunięta liczba';
+
+  @override
+  String get errorRemovingNumber => 'Błąd podczas usuwania numeru';
+
+  @override
+  String get confirmRemoval => 'Potwierdzenie usunięcia';
+
+  @override
+  String confirmRemoveFromBlacklist(Object phone) {
+    return 'Usunąć $phone z czarnej listy?';
+  }
+
+  @override
+  String confirmRemoveFromWhitelist(Object phone) {
+    return 'Usunąć $phone z białej listy?';
+  }
+
+  @override
+  String get remove => 'Usunąć';
+
+  @override
+  String get retry => 'Spróbuj ponownie';
+
+  @override
+  String get editComment => 'Edytuj komentarz';
+
+  @override
+  String get commentLabel => 'Komentarz';
+
+  @override
+  String get commentHint => 'Dodaj notatkę do tego numeru';
+
+  @override
+  String get save => 'Zapisz';
+
+  @override
+  String get commentUpdated => 'Komentarz zaktualizowany';
+
+  @override
+  String get errorUpdatingComment => 'Błąd podczas aktualizacji komentarza';
+
+  @override
+  String get notificationsTitle => 'Powiadomienia';
+
+  @override
+  String get notificationsDescription =>
+      'Wyświetlanie powiadomień o odfiltrowanych połączeniach';
+
+  @override
+  String get appearance => 'Wygląd';
+
+  @override
+  String get themeMode => 'Projekt';
+
+  @override
+  String get themeModeDescription => 'Wybierz jasny lub ciemny wzór';
+
+  @override
+  String get themeModeSystem => 'Standard systemu';
+
+  @override
+  String get themeModeLight => 'Światło';
+
+  @override
+  String get themeModeDark => 'Ciemny';
+
+  @override
+  String get experimentalFeatures => 'Funkcje eksperymentalne';
+
+  @override
+  String get answerbotFeature => 'Automatyczna sekretarka (Answerbot)';
+
+  @override
+  String get answerbotFeatureDescription =>
+      'Eksperyment: Zarządzanie automatyczną sekretarką SPAM dla Fritz!Box w aplikacji';
+
+  @override
+  String get answerbotMenuTitle => 'Automatyczna sekretarka';
+
+  @override
+  String get answerbotMenuDescription =>
+      'Zarządzanie automatyczną sekretarką SPAM';
+
+  @override
+  String potentialSpamLabel(String rating) {
+    return 'Podejrzane: $rating';
+  }
+
+  @override
+  String get statistics => 'Statystyki';
+
+  @override
+  String get blockedCallsCount => 'Zablokowane połączenia';
+
+  @override
+  String get suspiciousCallsCount => 'Podejrzane połączenia';
+
+  @override
+  String get fritzboxTitle => 'Fritz!Box';
+
+  @override
+  String get fritzboxConnected => 'Połączony';
+
+  @override
+  String get fritzboxConnectedNotProtected => 'Połączony, ale nie chroniony';
+
+  @override
+  String get fritzboxOffline => 'Niedostępne';
+
+  @override
+  String get fritzboxError => 'Błąd połączenia';
+
+  @override
+  String get fritzboxNotConfiguredShort => 'Nie skonfigurowano';
+
+  @override
+  String get fritzboxNotConfigured => 'Brak konfiguracji Fritz!Box';
+
+  @override
+  String get fritzboxNotConfiguredDescription =>
+      'Podłącz Fritz!Box, aby widzieć połączenia z telefonu stacjonarnego.';
+
+  @override
+  String get fritzboxConnect => 'Podłącz Fritz!Box';
+
+  @override
+  String get fritzboxDisconnect => 'Odłącz Fritz!Box';
+
+  @override
+  String get fritzboxDisconnectTitle => 'Odłączyć skrzynkę Fritz!';
+
+  @override
+  String get fritzboxDisconnectMessage =>
+      'Zapisane połączenia i dane dostępu zostaną usunięte.';
+
+  @override
+  String get fritzboxSyncNow => 'Synchronizuj teraz';
+
+  @override
+  String get fritzboxSyncDescription => 'Pobieranie listy połączeń z Fritz!';
+
+  @override
+  String fritzboxSyncComplete(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count zsynchronizowanych nowych połączeń',
+      one: 'Zsynchronizowano 1 nowe połączenie',
+      zero: 'Brak nowych połączeń',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get fritzboxSyncError => 'Błąd podczas synchronizacji';
+
+  @override
+  String get fritzboxVersion => 'Wersja FRITZ!OS';
+
+  @override
+  String get fritzboxHost => 'Adres';
+
+  @override
+  String get fritzboxCachedCalls => 'Zapisane połączenia';
+
+  @override
+  String get fritzboxLastSync => 'Ostatnia synchronizacja';
+
+  @override
+  String get fritzboxJustNow => 'Właśnie teraz';
+
+  @override
+  String fritzboxMinutesAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Przed $count minut',
+      one: '1 minutę temu',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String fritzboxHoursAgo(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count godzin temu',
+      one: '1 godzinę temu',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get fritzboxWizardTitle => 'Podłącz Fritz!Box';
+
+  @override
+  String get fritzboxStepDetection => 'Znajdź Fritz!Box';
+
+  @override
+  String get fritzboxStepDetectionSubtitle =>
+      'Automatyczne wyszukiwanie w sieci';
+
+  @override
+  String get fritzboxStepLogin => 'Zaloguj się';
+
+  @override
+  String get fritzboxStepLoginSubtitle => 'Wprowadź dane dostępu';
+
+  @override
+  String get fritzboxSearching => 'Szukaj Fritz!Box...';
+
+  @override
+  String get fritzboxNotFound => 'Nie znaleziono Fritz!Box';
+
+  @override
+  String get fritzboxNotFoundDescription =>
+      'Nie można automatycznie znaleźć Fritz!Box. Wprowadź adres ręcznie.';
+
+  @override
+  String get fritzboxHostLabel => 'Fritz!Adres skrytki pocztowej';
+
+  @override
+  String get fritzboxRetrySearch => 'Wyszukaj ponownie';
+
+  @override
+  String get fritzboxManualConnect => 'Połączenie';
+
+  @override
+  String get fritzboxLoginDescription =>
+      'Wprowadź dane dostępu do Fritz!Box. Można je znaleźć w interfejsie użytkownika Fritz!Box w sekcji System > Użytkownik Fritz!Box.';
+
+  @override
+  String get fritzboxShowUsername => 'Wprowadź nazwę użytkownika';
+
+  @override
+  String get fritzboxShowUsernameHint =>
+      'Zazwyczaj używany jest domyślny użytkownik';
+
+  @override
+  String get fritzboxUsernameLabel => 'Nazwa użytkownika';
+
+  @override
+  String get fritzboxPasswordLabel => 'Hasło';
+
+  @override
+  String get fritzboxCredentialsNote =>
+      'Dane dostępu są bezpiecznie przechowywane na urządzeniu.';
+
+  @override
+  String get fritzboxTestAndSave => 'Testowanie i zapisywanie';
+
+  @override
+  String get fritzboxConnectionFailed =>
+      'Połączenie nie powiodło się. Sprawdź dane dostępu.';
+
+  @override
+  String get fritzboxFillAllFields => 'Prosimy o wypełnienie wszystkich pól.';
+
+  @override
+  String get fritzboxOfflineBanner =>
+      'Skrzynka Fritz! nieosiągalna - pokaż zapisane połączenia';
+
+  @override
+  String get sourceMobile => 'Mobilny';
+
+  @override
+  String get sourceFritzbox => 'Fritz!Box';
+
+  @override
+  String get fritzboxStepBlocklist => 'Ochrona przed spamem';
+
+  @override
+  String get fritzboxStepBlocklistSubtitle => 'Konfigurowanie listy bloków';
+
+  @override
+  String get fritzboxBlocklistDescription =>
+      'Wybierz sposób ochrony urządzenia Fritz!Box przed połączeniami spamowymi.';
+
+  @override
+  String get fritzboxCardDavTitle => 'Lista bloków CardDAV';
+
+  @override
+  String get fritzboxCardDavDescription =>
+      'Fritz!Box synchronizuje listę blokad bezpośrednio z PhoneBlock. Zalecane dla FRITZ!OS 7.20+.';
+
+  @override
+  String get fritzboxSkipBlocklist => 'Konfiguracja późniejsza';
+
+  @override
+  String get fritzboxSkipBlocklistDescription =>
+      'Ochronę przed spamem można aktywować później w ustawieniach.';
+
+  @override
+  String get fritzboxVersionTooOldForCardDav =>
+      'CardDAV wymaga FRITZ!OS 7.20 lub nowszej wersji. Twój Fritz!Box ma starszą wersję.';
+
+  @override
+  String get fritzboxFinishSetup => 'Zakończenie konfiguracji';
+
+  @override
+  String get fritzboxPhoneBlockNotLoggedIn =>
+      'Zaloguj się najpierw do PhoneBlock.';
+
+  @override
+  String get fritzboxCannotGetUsername =>
+      'Nie można pobrać nazwy użytkownika PhoneBlock.';
+
+  @override
+  String get fritzboxBlocklistConfigFailed =>
+      'Nie można skonfigurować listy bloków.';
+
+  @override
+  String get fritzboxCardDavStatus => 'Status CardDAV';
+
+  @override
+  String get fritzboxCardDavStatusSynced => 'Zsynchronizowane';
+
+  @override
+  String get fritzboxCardDavStatusPending => 'Synchronizacja w toku';
+
+  @override
+  String get fritzboxCardDavStatusError => 'Błąd synchronizacji';
+
+  @override
+  String get fritzboxCardDavStatusDisabled => 'Dezaktywowany';
+
+  @override
+  String get fritzboxCardDavNote =>
+      'Fritz!Box synchronizuje książkę telefoniczną raz dziennie o północy.';
+
+  @override
+  String get fritzboxBlocklistMode => 'Tryb ochrony przed spamem';
+
+  @override
+  String get fritzboxBlocklistModeCardDav =>
+      'CardDAV (automatyczna synchronizacja)';
+
+  @override
+  String get fritzboxBlocklistModeNone => 'Nie aktywowano';
+
+  @override
+  String get fritzboxEnableCardDav => 'Aktywacja CardDAV';
+
+  @override
+  String get fritzboxEnableCardDavDescription =>
+      'Synchronizacja listy blokowania spamu bezpośrednio z Fritz!Box';
+
+  @override
+  String get fritzboxCardDavEnabled => 'Aktywowano listę bloków CardDAV';
+
+  @override
+  String get fritzboxDisableCardDav => 'Usuń listę bloków';
+
+  @override
+  String get fritzboxDisableCardDavTitle => 'Usunąć listę blokad?';
+
+  @override
+  String get fritzboxDisableCardDavMessage =>
+      'Lista bloków została usunięta z Fritz!';
+
+  @override
+  String get fritzboxDisable => 'Usunąć';
+
+  @override
+  String get fritzboxCardDavDisabled => 'Lista zablokowanych usunięta';
+
+  @override
+  String get fritzboxAnswerbotTitle => 'Automatyczna sekretarka';
+
+  @override
+  String get fritzboxAnswerbotActive => 'Aktywna automatyczna sekretarka';
+
+  @override
+  String get fritzboxAnswerbotPaused => 'Automatyczna sekretarka wstrzymana';
+
+  @override
+  String get fritzboxAnswerbotNotRegistered =>
+      'Automatyczna sekretarka nie jest podłączona';
+
+  @override
+  String get fritzboxAnswerbotEnabling => 'Aktywuj automatyczną sekretarkę...';
+
+  @override
+  String get fritzboxAnswerbotDescription =>
+      'Połączenia SPAM są automatycznie odbierane przez automatyczną sekretarkę PhoneBlock.';
+
+  @override
+  String get fritzboxEnableAnswerbot => 'Aktywacja automatycznej sekretarki';
+
+  @override
+  String get fritzboxEnableAnswerbotDescription =>
+      'Automatyczne odbieranie połączeń SPAM przez automatyczną sekretarkę PhoneBlock';
+
+  @override
+  String get fritzboxDisableAnswerbot => 'Usunięcie automatycznej sekretarki';
+
+  @override
+  String get fritzboxDisableAnswerbotTitle => 'Usunąć automatyczną sekretarkę?';
+
+  @override
+  String get fritzboxDisableAnswerbotMessage =>
+      'Automatyczna sekretarka PhoneBlock jest usuwana z urządzenia Fritz!Box i dezaktywowana na serwerze.';
+
+  @override
+  String get fritzboxAnswerbotEnabled => 'Włączona automatyczna sekretarka';
+
+  @override
+  String get fritzboxAnswerbotDisabled => 'Automatyczna sekretarka wyłączona';
+
+  @override
+  String get fritzboxAnswerbotSetupFailed =>
+      'Nie można skonfigurować automatycznej sekretarki.';
+
+  @override
+  String get fritzboxAnswerbotStepCreating =>
+      'Utwórz automatyczną sekretarkę...';
+
+  @override
+  String get fritzboxAnswerbotStepDetecting => 'Sprawdź dostęp zewnętrzny...';
+
+  @override
+  String get fritzboxAnswerbotStepDynDns => 'Konfiguracja DynDNS...';
+
+  @override
+  String get fritzboxAnswerbotStepWaitingDynDns =>
+      'Czekam na rejestrację DynDNS...';
+
+  @override
+  String get fritzboxAnswerbotStepSip => 'Zarejestruj urządzenie SIP...';
+
+  @override
+  String get fritzboxAnswerbotStepInternetAccess =>
+      'Aktywacja dostępu do Internetu...';
+
+  @override
+  String get fritzboxAnswerbotStepEnabling =>
+      'Aktywuj automatyczną sekretarkę...';
+
+  @override
+  String get fritzboxAnswerbotStepWaiting => 'Czekam na rejestrację...';
+
+  @override
+  String get fritzboxAnswerbotSetupTitle =>
+      'Konfigurowanie automatycznej sekretarki';
+
+  @override
+  String get fritzboxAnswerbotSetupSuccess =>
+      'Automatyczna sekretarka została pomyślnie skonfigurowana i jest teraz aktywna.';
+
+  @override
+  String fritzboxAnswerbotSetupErrorDetail(String error) {
+    return 'Błąd: $error';
+  }
+
+  @override
+  String get fritzboxAnswerbotStepSecondFactor =>
+      'Potwierdź dostęp do Fritz!Box...';
+
+  @override
+  String get fritzboxSecondFactorButton =>
+      'Naciśnij dowolny przycisk na urządzeniu Fritz!Box';
+
+  @override
+  String fritzboxSecondFactorDtmf(String code) {
+    return 'Lub wybierz $code na podłączonym telefonie';
+  }
+
+  @override
+  String get fritzboxAnswerbotSettings => 'Ustawienia Answerbota';
+
+  @override
+  String get wildcardRulesHeader => 'Zasady dotyczące symboli wieloznacznych';
+
+  @override
+  String get blockedNumbersHeader => 'Zablokowane numery';
+
+  @override
+  String get addNumber => 'Dodaj numer';
+
+  @override
+  String get phoneNumberLabel => 'Numer telefonu';
+
+  @override
+  String get wildcardToggle => 'Zakres numerów bloków';
+
+  @override
+  String get wildcardHint =>
+      'Blokuje wszystkie numery zaczynające się od tego prefiksu';
+
+  @override
+  String get wildcardTooShort =>
+      'Prefiks musi zawierać co najmniej jeden kod kraju (np. +43).';
+
+  @override
+  String get wildcardInvalidFormat =>
+      'Nieprawidłowy format numeru. Użyj międzynarodowego kodu wybierania (np. +43 lub 0043).';
+
+  @override
+  String get wildcardDuplicate => 'Ten zakres numerów jest już zablokowany.';
+
+  @override
+  String get wildcardAdded => 'Zablokowany zakres numerów';
+
+  @override
+  String get wildcardRemoved => 'Usunięto regułę symboli wieloznacznych';
+
+  @override
+  String confirmRemoveWildcard(String prefix) {
+    return 'Naprawdę usunąć regułę wieloznaczną $prefix*?';
+  }
+
+  @override
+  String get numberAdded => 'Numer dodany do czarnej listy';
+
+  @override
+  String get addCommentWildcard => 'Dodaj komentarz (opcjonalnie)';
+
+  @override
+  String get commentHintWildcard => 'Dlaczego blokujesz ten zakres numerów?';
+
+  @override
+  String get next => 'Dalej';
+
+  @override
+  String get add => 'Dodaj';
+
+  @override
+  String get onPersonalBlocklist => 'Na liście zablokowanych';
+
+  @override
+  String get wildcardBlocked => 'Reguła symboli wieloznacznych';
+
+  @override
+  String matchedWildcardFilter(String prefix) {
+    return 'Filtr: $prefix';
+  }
+
+  @override
+  String get blocklistCache => 'Pamięć podręczna listy bloków';
+
+  @override
+  String blocklistCachedEntries(int count) {
+    return '$count liczb';
+  }
+
+  @override
+  String blocklistLastSync(String time) {
+    return 'Ostatnia synchronizacja';
+  }
+
+  @override
+  String get blocklistLastSyncNever => 'Nigdy';
+
+  @override
+  String blocklistLastSyncAgoDays(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Dni',
+      one: 'Dzień',
+    );
+    return 'przed $count $_temp0';
+  }
+
+  @override
+  String blocklistLastSyncAgoHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Godziny',
+      one: 'Godzina',
+    );
+    return 'przed $count $_temp0';
+  }
+
+  @override
+  String blocklistLastSyncAgoMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'minuty',
+      one: 'Minuta',
+    );
+    return 'przed $count $_temp0';
+  }
+
+  @override
+  String blocklistLastSyncAgoSeconds(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Sekundy',
+      one: 'Drugi',
+    );
+    return 'przed $count $_temp0';
+  }
+
+  @override
+  String get blocklistVersion => 'Wersja';
+
+  @override
+  String get blocklistSyncNow => 'Synchronizuj teraz';
+
+  @override
+  String get blocklistSyncing => 'Synchronizacja...';
+
+  @override
+  String get blocklistSyncSuccess => 'Synchronizacja listy bloków powiodła się';
+
+  @override
+  String get blocklistSyncFailed =>
+      'Synchronizacja listy bloków nie powiodła się';
+
+  @override
+  String personalizedAddedDate(String date) {
+    return 'Dodano: $date';
+  }
+}

@@ -12,9 +12,12 @@ import org.slf4j.LoggerFactory;
 
 import de.haumacher.phoneblock.app.render.DefaultController;
 import de.haumacher.phoneblock.app.render.TemplateRenderer;
+import de.haumacher.phoneblock.app.render.controller.LoginController;
+import de.haumacher.phoneblock.app.AuthContext;
 import de.haumacher.phoneblock.db.DB;
 import de.haumacher.phoneblock.db.DBService;
 import de.haumacher.phoneblock.db.settings.AuthToken;
+import de.haumacher.phoneblock.util.I18N;
 import de.haumacher.phoneblock.util.ServletUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -66,12 +69,12 @@ public class LoginServlet extends HttpServlet {
 
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		if (LoginFilter.getAuthenticatedUser(req.getSession(false)) != null) {
+		if (LoginFilter.getAuthenticatedUser(req) != null) {
 			String location = location(req);
 			resp.sendRedirect(req.getContextPath() + location);
 			return;
 		}
-		TemplateRenderer.getInstance(req).process("/login", req, resp);
+		TemplateRenderer.getInstance(req).process(LoginController.LOGIN_PAGE, req, resp);
 	}
 	
 	@Override
@@ -92,28 +95,36 @@ public class LoginServlet extends HttpServlet {
 		}
 		
 		DB db = DBService.getInstance();
-		String authenticatedUser = db.login(userName, password);
-		if (authenticatedUser == null) {
-			LOG.warn("Login failed for user: " + userName);
+		AuthContext authContext = db.login(userName, password);
+		if (authContext == null) {
+			LOG.warn("Login failed (user name length {}).", userName.length());
+			sendFailure(req, resp);
+			return;
+		}
+		AuthToken authorization = authContext.getAuthorization();
+		if (!authorization.isAccessLogin()) {
+			LOG.warn("Login attempt with unprivileged token for user {}.", authorization.getUserId());
 			sendFailure(req, resp);
 			return;
 		}
 
+		String authenticatedUser = authorization.getUserName();
+
 		String rememberValue = req.getParameter(REMEMBER_ME_PARAM);
-		processRememberMe(req, resp, db, rememberValue, userName);
+		processRememberMe(req, resp, db, rememberValue, authenticatedUser);
+
+		LoginFilter.setSessionUser(req, authContext);
 		
-		LoginFilter.setSessionUser(req, authenticatedUser);
-		
-		redirectToLocationAfterLogin(req, resp);
+		redirectToLocationAfterLogin(req, resp, SettingsServlet.PATH);
 	}
 
 	/**
 	 * Redirects the current request to its final destination.
 	 */
-	public static void redirectToLocationAfterLogin(HttpServletRequest req, HttpServletResponse resp) throws IOException {
+	public static void redirectToLocationAfterLogin(HttpServletRequest req, HttpServletResponse resp, String defaultLocation) throws IOException {
 		String location = location(req);
 		if (location == null) {
-			resp.sendRedirect(req.getContextPath() + SettingsServlet.PATH);
+			resp.sendRedirect(req.getContextPath() + defaultLocation);
 		} else {
 			resp.sendRedirect(req.getContextPath() + location);
 		}
@@ -133,8 +144,8 @@ public class LoginServlet extends HttpServlet {
 	 * Redirects the client to the login page.
 	 */
 	public static void sendFailure(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		req.setAttribute(LOGIN_ERROR_ATTR, "Anmeldung fehlgeschlagen.");
-		TemplateRenderer.getInstance(req).process("/login", req, resp);
+		req.setAttribute(LOGIN_ERROR_ATTR, I18N.getMessage(req, "error.login.failed"));
+		TemplateRenderer.getInstance(req).process(LoginController.LOGIN_PAGE, req, resp);
 	}
 
 	/**
@@ -174,7 +185,7 @@ public class LoginServlet extends HttpServlet {
 	
 	public static String locationParam(String location, boolean first) {
 		String locationParam;
-		if (location != null) {
+		if (location != null && !location.isEmpty()) {
 			locationParam = (first ? "?" : "&") + LoginServlet.LOCATION_ATTRIBUTE + "=" + URLEncoder.encode(location, StandardCharsets.UTF_8);
 		} else {
 			locationParam = "";
@@ -194,12 +205,12 @@ public class LoginServlet extends HttpServlet {
 	 */
 	public static String location(HttpServletRequest request, String defaultLocation) {
 		String locationAttribute = (String) request.getAttribute(LoginServlet.LOCATION_ATTRIBUTE);
-		if (locationAttribute != null) {
+		if (locationAttribute != null && !locationAttribute.isEmpty()) {
 			return locationAttribute;
 		}
 		
 		String locationParam = (String) request.getParameter(LoginServlet.LOCATION_ATTRIBUTE);
-		if (locationParam != null) {
+		if (locationParam != null && !locationParam.isEmpty()) {
 			return locationParam;
 		}
 		
@@ -211,7 +222,7 @@ public class LoginServlet extends HttpServlet {
 			return ServletUtil.currentPage(request);
 		}
 		
-		return SettingsServlet.PATH;
+		return null;
 	}
 
 	/**
@@ -219,7 +230,7 @@ public class LoginServlet extends HttpServlet {
 	 */
 	public static void forwardLocation(HttpServletRequest request) {
 		String location = location(request);
-		if (location != null) {
+		if (location != null && !location.isEmpty()) {
 			request.setAttribute(LOCATION_ATTRIBUTE, location);
 		}
 	}
@@ -229,7 +240,6 @@ public class LoginServlet extends HttpServlet {
 	 */
 	public static void requestLogin(HttpServletRequest request, HttpServletResponse response) throws IOException {
 		String originalLocation = originalLocation(request);
-		LOG.info("Requesting login for resource: " + originalLocation);
 		
 		// Forward language
 		String langSpec;

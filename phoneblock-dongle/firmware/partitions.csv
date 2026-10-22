@@ -1,0 +1,38 @@
+# Name,     Type, SubType, Offset,    Size
+# OTA-capable layout on 4 MB flash. Two equal app slots (ota_0/ota_1)
+# of 1664 KB each — sized to fit the WiFi-enabled build (~1.4 MB)
+# with ~15 % headroom. Earlier: 1472 KB (4 % headroom, getting tight),
+# 1280 KB (overflowed when the Ethernet default flipped to WiFi).
+# Storage partition keeps the "storage" label so announcement.c
+# continues to mount it; size dropped from 1024 KB to 640 KB after
+# realising the user-recorded announcement is capped at 240 KB
+# (see ANNOUNCEMENT_MAX_BYTES in announcement.h) — 640 KB still
+# leaves ~2.7× headroom over the cap, plenty for SPIFFS overhead
+# and any future small assets.
+#
+# The 4 KB at 0x12000 (right after phy_init) is left as an unused gap.
+# It formerly held a per-install "pairing" partition (custom data
+# subtype 0x40) that the browser flasher wrote with a random secret so
+# the install page could locate a freshly-flashed dongle on the LAN.
+# That handshake was dropped in favour of plain mDNS host-name lookup
+# (issue #318); dongles flashed with the old layout keep the now-unused
+# partition until they are reflashed over USB.
+#
+# The "coredump" partition (52 KB) sits in the alignment gap before
+# ota_0 (which must start at the next 64 KB boundary, 0x20000). The
+# ESP32 panic handler writes an ELF-formatted core dump there on crash;
+# on the next boot, crashreport.c uploads it to the PhoneBlock backend
+# and erases the slot. Dongles flashed with the older layout don't have
+# this partition — esp_core_dump_image_check returns ESP_ERR_NOT_FOUND
+# there and the upload path is skipped.
+#
+# One-way migration: existing dongles running the old factory-only
+# layout must be reflashed over USB once. From there on, OTA updates
+# flip between ota_0 and ota_1 automatically.
+nvs,        data, nvs,      0x9000,    0x6000
+otadata,    data, ota,      0xf000,    0x2000
+phy_init,   data, phy,      0x11000,   0x1000
+coredump,   data, coredump, 0x13000,   0xD000
+ota_0,      app,  ota_0,    0x20000,   0x1A0000
+ota_1,      app,  ota_1,    0x1C0000,  0x1A0000
+storage,    data, spiffs,   0x360000,  0xA0000

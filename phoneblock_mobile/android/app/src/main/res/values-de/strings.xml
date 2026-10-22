@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneBlock Mobile</string>
+    <string name="notification_channel_name">Gefilterte Anrufe</string>
+    <string name="notification_channel_description">Benachrichtigungen für blockierte und verdächtige Anrufe</string>
+    <string name="notification_blocked_prefix">Blockiert:</string>
+    <string name="notification_suspicious_prefix">Verdächtig:</string>
+    <plurals name="notification_title">
+        <item quantity="one">PhoneBlock: 1 gefilterter Anruf</item>
+        <item quantity="other">PhoneBlock: %d gefilterte Anrufe</item>
+    </plurals>
+</resources>

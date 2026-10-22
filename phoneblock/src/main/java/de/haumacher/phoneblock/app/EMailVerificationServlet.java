@@ -14,9 +14,11 @@ import org.xbill.DNS.Record;
 import org.xbill.DNS.Type;
 
 import de.haumacher.phoneblock.app.render.TemplateRenderer;
+import de.haumacher.phoneblock.app.render.controller.LoginController;
 import de.haumacher.phoneblock.db.DBService;
 import de.haumacher.phoneblock.mail.MailService;
 import de.haumacher.phoneblock.mail.MailServiceStarter;
+import de.haumacher.phoneblock.util.I18N;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.servlet.ServletException;
@@ -51,19 +53,36 @@ public class EMailVerificationServlet extends HttpServlet {
 	public static final String CAPTCHA_MESSAGE_ATTR = "captchaMessage";
 	
 	public static final String LOGIN_WEB = "/login-web";
-	
+
 	public static final String LOGIN_MOBILE = "/login-mobile";
+
+	/**
+	 * Template path for the web signup code entry page.
+	 */
+	public static final String SIGNUP_CODE_PAGE = "/signup-code";
+
+	/**
+	 * Template path for the mobile code entry page.
+	 */
+	public static final String MOBILE_CODE_PAGE = "/mobile/code";
 	
 	
 	private static final Logger LOG = LoggerFactory.getLogger(EMailVerificationServlet.class);
+	
+	@Override
+	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String redirectUrl = req.getContextPath() + failurePage(req) + LoginServlet.locationParam(req);
+
+		resp.sendRedirect(redirectUrl);
+	}
 
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		LoginServlet.forwardLocation(req);
-		
+
 		String email = req.getParameter("email");
 		if (email == null || email.trim().isEmpty()) {
-			sendEmailFailure(req, resp, "Die E-Mail darf nicht leer sein.");
+			sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.empty"));
 			return;
 		}
 
@@ -71,7 +90,7 @@ public class EMailVerificationServlet extends HttpServlet {
 
 		String captcha = req.getParameter("captcha");
 		if (captcha == null || captcha.trim().isEmpty()) {
-			sendCaptchaFailure(req, resp, "Du musst den Sicherheitscode eingeben.");
+			sendCaptchaFailure(req, resp, I18N.getMessage(req, "error.email.verification.captcha-empty"));
 			return;
 		}
 
@@ -79,7 +98,7 @@ public class EMailVerificationServlet extends HttpServlet {
 		String captchaExpected = (String) session.getAttribute("captcha");
 		session.removeAttribute("captcha");
 		if (!captcha.trim().equals(captchaExpected)) {
-			sendCaptchaFailure(req, resp, "Der Sicherheitscode stimmt nicht überein.");
+			sendCaptchaFailure(req, resp, I18N.getMessage(req, "error.email.verification.captcha-mismatch"));
 			return;
 		}
 		
@@ -90,27 +109,27 @@ public class EMailVerificationServlet extends HttpServlet {
 			int atIndex = plainAddress.indexOf('@');
 			if (atIndex <= 0) {
 				req.removeAttribute("email");
-				sendEmailFailure(req, resp, "Die E-Mail-Adresse enthält keinen Nutzernamen.");
+				sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.no-username"));
 				return;
 			}
 			String domain = plainAddress.substring(atIndex + 1);
 			Record[] result = new Lookup(domain, Type.MX, DClass.IN).run();
 			if (result == null || result.length == 0) {
 				req.removeAttribute("email");
-				sendEmailFailure(req, resp, "Keine gültige E-Mail-Domain: " + domain);
+				sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.invalid-domain", domain));
 				return;
 			}
-			
+
 			MXRecord mx = (MXRecord) result[0];
 			String mxHost = mx.getTarget().toString(true);
 			if (".".equals(mxHost)) {
 				req.removeAttribute("email");
-				sendEmailFailure(req, resp, "Die Domain kann keine E-Mails empfangen: " + domain);
+				sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.domain-no-email", domain));
 				return;
 			}
 		} catch (AddressException ex) {
 			req.removeAttribute("email");
-			sendEmailFailure(req, resp, "Die E-Mail-Adresse ist nicht gültig: " + ex.getMessage());
+			sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.invalid", ex.getMessage()));
 			return;
 		}
     	
@@ -121,25 +140,30 @@ public class EMailVerificationServlet extends HttpServlet {
 			MailService mailService = MailServiceStarter.getInstance();
 			if (mailService == null) {
 				LOG.error("Mail service not active!");
-				sendEmailFailure(req, resp, "Es kann aktuell keine E-Mail versendet werden, bitte probiere es später noch einmal.");
+				sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.service-unavailable"));
 				return;
 			}
 
-			mailService.sendActivationMail(email, code);
+			// Skip disposable check for existing users (they may have registered
+			// before their domain was classified as disposable).
+			boolean existingUser = DBService.getInstance().isEmailInUse(email);
+
+			// Get language from request (browser locale or authenticated user's preference)
+			mailService.sendActivationMail(email, code, I18N.getUserLanguage(req), existingUser);
 		} catch (AddressException ex) {
 			LOG.warn("Failed to send message: " + ex.getMessage());
-			sendEmailFailure(req, resp, "Es konnte keine E-Mail geschickt werden: " + ex.getMessage());
+			sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.send-failed", ex.getMessage()));
 			return;
 		} catch (Exception ex) {
 			LOG.error("Failed to send message.", ex);
-			sendEmailFailure(req, resp, "Es konnte keine E-Mail geschickt werden: " + ex.getMessage());
+			sendEmailFailure(req, resp, I18N.getMessage(req, "error.email.verification.send-failed", ex.getMessage()));
 			return;
 		}
 		
 		session.setAttribute("email", email);
 		session.setAttribute("code", code);
+
 		req.setAttribute(RESTART_PAGE_ATTR, failurePage(req));
-		
 		TemplateRenderer.getInstance(req).process(successPage(req), req, resp);
 	}
 
@@ -154,27 +178,27 @@ public class EMailVerificationServlet extends HttpServlet {
 		req.setAttribute(CAPTCHA_MESSAGE_ATTR, message);
 		TemplateRenderer.getInstance(req).process(failurePage(req), req, resp);
 	}
-	
+
 	/**
 	 * The page to redirect, if something went wrong.
 	 */
 	private static String failurePage(HttpServletRequest req) {
 		switch (req.getServletPath()) {
-		case LOGIN_MOBILE: 
-			return "/mobile-login";
-		case LOGIN_WEB: 
+		case LOGIN_MOBILE:
+			return CreateAuthTokenServlet.MOBILE_LOGIN;
+		case LOGIN_WEB:
 		default:
-			return "/login";
+			return LoginController.LOGIN_PAGE;
 		}
 	}
 
 	private String successPage(HttpServletRequest req) {
 		switch (req.getServletPath()) {
-			case LOGIN_MOBILE: 
-				return "/mobile-code";
-			case LOGIN_WEB: 
+			case LOGIN_MOBILE:
+				return MOBILE_CODE_PAGE;
+			case LOGIN_WEB:
 			default:
-				return "/signup-code"; 
+				return SIGNUP_CODE_PAGE;
 		}
 	}
 

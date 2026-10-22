@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
@@ -16,8 +17,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.ResourceBundle;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -33,17 +34,21 @@ import de.haumacher.phoneblock.app.api.model.SearchResult;
 import de.haumacher.phoneblock.app.api.model.UserComment;
 import de.haumacher.phoneblock.app.render.DefaultController;
 import de.haumacher.phoneblock.app.render.TemplateRenderer;
+import de.haumacher.phoneblock.app.render.controller.PhoneInfoController;
 import de.haumacher.phoneblock.db.AggregationInfo;
 import de.haumacher.phoneblock.db.DB;
+import de.haumacher.phoneblock.db.DBDayActivity;
 import de.haumacher.phoneblock.db.DBNumberInfo;
 import de.haumacher.phoneblock.db.DBService;
 import de.haumacher.phoneblock.db.DBUserSettings;
+import de.haumacher.phoneblock.db.settings.UserSettings;
 import de.haumacher.phoneblock.db.Ratings;
 import de.haumacher.phoneblock.db.SpamReports;
 import de.haumacher.phoneblock.db.Users;
-import de.haumacher.phoneblock.location.LocationService;
 import de.haumacher.phoneblock.meta.MetaSearchService;
 import de.haumacher.phoneblock.shared.Language;
+import de.haumacher.phoneblock.util.I18N;
+import de.haumacher.phoneblock.util.ServletUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -57,8 +62,6 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(urlPatterns = {SearchServlet.NUMS_PREFIX, SearchServlet.NUMS_PREFIX + "/*"})
 public class SearchServlet extends HttpServlet {
 	
-	public static final String KEYWORDS_ATTR = "keywords";
-
 	public static final String THANKS_ATTR = "thanks";
 
 	public static final String TITLE_ATTR = "title";
@@ -102,6 +105,7 @@ public class SearchServlet extends HttpServlet {
 			or("Googlebot"
 			, "AdsBot-Google"
 			, "Googlebot-Image"
+			, "Google-Read-Aloud"
 
 			, "bingbot"
 			, "BingPreview"
@@ -110,11 +114,14 @@ public class SearchServlet extends HttpServlet {
 			, "YandexImages"
 			, "YandexRenderResourcesBot"
 			
+			, "Qwantbot" // French search engine.
+			
 			, "Amazonbot"
 			, "Applebot"
 			, "archive.org_bot"
 
 			, "OAI-SearchBot" // OpenAI's web crawler
+			, "ChatGPT-User" // OpenAI's web agent
 			, "Bytespider" // Crawler operated by ByteDance
 			
 			// Social media
@@ -124,6 +131,7 @@ public class SearchServlet extends HttpServlet {
 			, "meta-externalagent"
 			, "TikTokSpider"
 			, "TelegramBot"
+			, "WhatsApp"
 
 			// Monitoring
 			, "upz-bot"
@@ -182,7 +190,7 @@ public class SearchServlet extends HttpServlet {
 		}
 
 		private int length(UserComment c1) {
-			int length = c1.getComment().length();
+			int length = c1.getComment() == null ? 0 : c1.getComment().length();
 			if (length < 20) {
 				return 0;
 			}
@@ -209,38 +217,25 @@ public class SearchServlet extends HttpServlet {
 	 */
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		String userName = LoginFilter.getAuthenticatedUser(req);
-
 		String query = req.getParameter("num");
 		if (query == null || query.isBlank()) {
 			req.setAttribute(NUMBER_ATTR, query);
 			TemplateRenderer.getInstance(req).process("/no-such-number", req, resp);
 			return;
 		}
-		
-		String dialPrefix;
-		if (userName == null) {
-			dialPrefix = LocationService.getInstance().getDialPrefix(req);
-		} else {
-			DB db = DBService.getInstance();
-			try (SqlSession session = db.openSession()) {
-				DBUserSettings settings = db.getUserSettingsRaw(session, userName);
-				dialPrefix = settings.getDialPrefix();
-			}
-		}
-		
-		PhoneNumer number = extractNumber(query, dialPrefix);
+
+		String dialPrefix = ServletUtil.lookupDialPrefix(req);
+		PhoneNumer number = NumberAnalyzer.extractNumber(query, dialPrefix);
 		if (number == null) {
 			req.setAttribute(NUMBER_ATTR, query);
 			TemplateRenderer.getInstance(req).process("/no-such-number", req, resp);
 			return;
 		}
-		
+
 		// Send to display page.
-		String phone = NumberAnalyzer.getPhoneId(number);
-		resp.sendRedirect(req.getContextPath() +  SearchServlet.NUMS_PREFIX + "/" + phone);
+		resp.sendRedirect(req.getContextPath() +  SearchServlet.NUMS_PREFIX + "/" + number.getZeroZero());
 	}
-	
+
 	@Override
 	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
 		String pathInfo = req.getPathInfo();
@@ -249,24 +244,24 @@ public class SearchServlet extends HttpServlet {
 			TemplateRenderer.getInstance(req).process("/no-such-number", req, resp);
 			return;
 		}
-		
+
 		String query = pathInfo.substring(1);
-		
+
 		boolean bot = isBot(req);
 		boolean isSeachHit = !bot && req.getParameter("link") == null;
 
-		PhoneNumer number = extractNumber(query);
+		String dialPrefix = ServletUtil.lookupDialPrefix(req);
+		PhoneNumer number = NumberAnalyzer.extractNumber(query, dialPrefix);
 		if (number == null) {
 			req.setAttribute(NUMBER_ATTR, query);
 			TemplateRenderer.getInstance(req).process("/no-such-number", req, resp);
 			return;
 		}
 		
-		String phone = NumberAnalyzer.getPhoneId(number);
-		
-		if (!phone.equals(query)) {
+		String canonicalPhone = number.getZeroZero();
+		if (!canonicalPhone.equals(query)) {
 			// Normalize the URL in the browser.
-			resp.sendRedirect(req.getContextPath() +  SearchServlet.NUMS_PREFIX + "/" + phone);
+			resp.sendRedirect(req.getContextPath() +  SearchServlet.NUMS_PREFIX + "/" + canonicalPhone);
 			return;
 		}
 
@@ -275,16 +270,11 @@ public class SearchServlet extends HttpServlet {
 		SearchResult searchResult;
 		int minVotes;
 		try (SqlSession session = db.openSession()) {
-			String userName = LoginFilter.getAuthenticatedUser(req);
-			
-			String dialPrefix;
-			if (userName == null) {
+			UserSettings settings = LoginFilter.getUserSettings(req);
+			if (settings == null) {
 				minVotes = DB.MIN_VOTES;
-				dialPrefix = LocationService.getInstance().getDialPrefix(req);
 			} else {
-				DBUserSettings settings = db.getUserSettingsRaw(session, userName);
 				minVotes = settings.getMinVotes();
-				dialPrefix = settings.getDialPrefix();
 			}
 			
 			Set<String> langs = new HashSet<>();
@@ -301,48 +291,30 @@ public class SearchServlet extends HttpServlet {
 		sendResult(req, resp, searchResult, minVotes);
 	}
 
-	public static SearchResult analyze(String query, String userName, String dialPrefix) {
-		PhoneNumer number = extractNumber(query);
-		if (number == null) {
-			return null;
-		}
+	public static SearchResult analyze(String query, UserSettings settings, String dialPrefix) {
 		DB db = DBService.getInstance();
 		try (SqlSession session = db.openSession()) {
 			Set<String> langs;
-			if (userName == null) {
+			if (settings == null) {
 				langs = Collections.singleton(Language.getDefault().tag);
 			} else {
-				Users users = session.getMapper(Users.class);
-				String lang = users.getLocale(userName);
-				dialPrefix = users.getDialPrefix(userName);
-				langs = Collections.singleton(lang);
+				langs = Collections.singleton(settings.getLang());
+				dialPrefix = settings.getDialPrefix();
+			}
+
+			PhoneNumer number = NumberAnalyzer.extractNumber(query, dialPrefix);
+			if (number == null) {
+				return null;
 			}
 
 			return analyzeDb(db, session, number, dialPrefix, true, langs);
 		}
 	}
 
-	private static PhoneNumer extractNumber(String query) {
-		return extractNumber(query, NumberAnalyzer.GERMAN_DIAL_PREFIX);
-	}
-	
-	private static PhoneNumer extractNumber(String query, String dialPrefix) {
-		String rawPhoneNumber = NumberAnalyzer.normalizeNumber(query);
-		if (rawPhoneNumber.isEmpty() || rawPhoneNumber.contains("*")) {
-			return null;
-		}
-		
-		PhoneNumer number = NumberAnalyzer.analyze(rawPhoneNumber, dialPrefix);
-		if (number == null) {
-			return null;
-		}
-		return number;
-	}
-
-	private static SearchResult analyzeDb(DB db, SqlSession session, PhoneNumer number, String dialPrefix, boolean isSeachHit, Set<String> langs) {
+	static SearchResult analyzeDb(DB db, SqlSession session, PhoneNumer number, String dialPrefix, boolean isSeachHit, Set<String> langs) {
 		SpamReports reports = session.getMapper(SpamReports.class);
 		
-		String phone = NumberAnalyzer.getPhoneId(number);
+		String phoneId = NumberAnalyzer.getPhoneId(number);
 		
 		NumberInfo numberInfo;
 		PhoneInfo info;
@@ -359,7 +331,7 @@ public class SearchServlet extends HttpServlet {
 		if (isSeachHit) {
 			comments = MetaSearchService.getInstance().fetchComments(number, dialPrefix).stream().filter(c -> langs.contains(c.getLang())).toList();
 		} else {
-			comments = reports.getComments(phone, langs);
+			comments = reports.getComments(phoneId, langs);
 		}
 		
 		boolean commit = false;
@@ -373,13 +345,15 @@ public class SearchServlet extends HttpServlet {
 			commit = true;
 		}
 		
-		numberInfo = db.getPhoneInfo(reports, phone);
+		numberInfo = db.getPhoneInfo(reports, phoneId);
 		
-		if (reports.isWhiteListed(phone)) {
-			info = PhoneInfo.create().setPhone(phone).setWhiteListed(true).setRating(Rating.A_LEGITIMATE);
+		if (reports.isWhiteListed(phoneId)) {
+			info = NumberAnalyzer.phoneInfoFromNumber(number)
+				.setWhiteListed(true)
+				.setRating(Rating.A_LEGITIMATE);
 			
 			numberInfo.setCalls(0);
-			numberInfo.setVotes(0);
+			numberInfo.setRawVotes(0);
 			numberInfo.setRatingPing(0);
 			numberInfo.setRatingPoll(0);
 			numberInfo.setRatingAdvertising(0);
@@ -388,32 +362,32 @@ public class SearchServlet extends HttpServlet {
 			
 			relatedNumbers = Collections.emptyList();
 		} else {
-			AggregationInfo aggregation10 = db.getAggregation10(reports, phone);
-			AggregationInfo aggregation100 = db.getAggregation100(reports, phone);
+			AggregationInfo aggregation10 = db.getAggregation10(reports, phoneId);
+			AggregationInfo aggregation100 = db.getAggregation100(reports, phoneId);
 			
 			info = db.getPhoneInfo(numberInfo, aggregation10, aggregation100);
 			
 			if (aggregation100.getCnt() >= DB.MIN_AGGREGATE_100) {
-				relatedNumbers = reports.getRelatedNumbers(aggregation100.getPrefix(), phone.length());
+				relatedNumbers = reports.getRelatedNumbers(aggregation100.getPrefix(), phoneId.length(), db.maxRawSpam(1));
 				
 				if (comments.isEmpty()) {
-					comments = reports.getAllComments(aggregation100.getPrefix(), phone.length(), langs);
+					comments = reports.getAllComments(aggregation100.getPrefix(), phoneId.length(), langs);
 				}
 				
 				if (info.getRating() == Rating.B_MISSED) {
-					DBNumberInfo aggregateInfo = reports.getPhoneInfoAggregate(aggregation100.getPrefix(), phone.length());
+					DBNumberInfo aggregateInfo = reports.getPhoneInfoAggregate(aggregation100.getPrefix(), phoneId.length());
 					info.setRating(DB.rating(aggregateInfo));
 				}
 			} else {
 				if (aggregation10.getCnt() >= DB.MIN_AGGREGATE_10) {
-					relatedNumbers = reports.getRelatedNumbers(aggregation10.getPrefix(), phone.length());
+					relatedNumbers = reports.getRelatedNumbers(aggregation10.getPrefix(), phoneId.length(), db.maxRawSpam(1));
 
 					if (comments.isEmpty()) {
-						comments = reports.getAllComments(aggregation10.getPrefix(), phone.length(), langs);
+						comments = reports.getAllComments(aggregation10.getPrefix(), phoneId.length(), langs);
 					}
 
 					if (info.getRating() == Rating.B_MISSED) {
-						DBNumberInfo aggregateInfo = reports.getPhoneInfoAggregate(aggregation10.getPrefix(), phone.length());
+						DBNumberInfo aggregateInfo = reports.getPhoneInfoAggregate(aggregation10.getPrefix(), phoneId.length());
 						info.setRating(DB.rating(aggregateInfo));
 					}
 				} else {
@@ -422,20 +396,38 @@ public class SearchServlet extends HttpServlet {
 			}
 		}
 		
-		searches = db.getSearchHistory(reports, phone, 7);
-		aiSummary = reports.getSummary(phone);
-		
-		prev = reports.getPrevPhone(phone);
-		next = reports.getNextPhone(phone);
-		
+		searches = db.getNumberActivity(reports, phoneId, 7).stream().map(DBDayActivity::getSearches).collect(Collectors.toList());
+		aiSummary = reports.getSummary(phoneId);
+
+		// Navigate only between numbers that still display at least one vote;
+		// decayed numbers whose evidence has faded to a rounded 0 are skipped (#300).
+		double minRawSpam = db.maxRawSpam(1);
+		prev = reports.getPrevPhone(phoneId, minRawSpam);
+		next = reports.getNextPhone(phoneId, minRawSpam);
+
 		if (commit) {
 			session.commit();
 		}
 
+		// Suppress details for numbers rated positively by only a few users to protect personal contacts.
+		boolean suppressDetails = !info.isWhiteListed()
+				&& info.getVotes() <= 0 && info.getVotesWildcard() <= 0
+				&& numberInfo.getRatingLegitimate() < DB.MIN_LEGITIMATE;
+		if (suppressDetails) {
+			comments = Collections.emptyList();
+			aiSummary = null;
+			searches = Collections.emptyList();
+		}
+
+		// Drop rating-only rows: a personal rating recorded on the black-/whitelist without
+		// comment text is stored as a COMMENTS row with an empty COMMENT and must not be shown
+		// as a comment.
+		comments = comments.stream().filter(c -> c.getComment() != null && !c.getComment().isBlank()).toList();
+
 		// Ensure that equal number of positive and negative comments are shown (white-listed numbers are an exception).
 		List<UserComment> positive = comments.stream().filter(c -> c.getRating() == Rating.A_LEGITIMATE).sorted(COMMENT_ORDER).collect(Collectors.toList());
 		List<UserComment> negative = comments.stream().filter(c -> c.getRating() != Rating.A_LEGITIMATE).sorted(COMMENT_ORDER).collect(Collectors.toList());
-		
+
 		int positiveCnt = positive.size();
 		int negativeCnt = negative.size();
 		if (info.isWhiteListed()) {
@@ -450,19 +442,24 @@ public class SearchServlet extends HttpServlet {
 		List<UserComment> shownComments = new ArrayList<>(positive.subList(0, positiveCnt));
 		shownComments.addAll(negative.subList(0, negativeCnt));
 		shownComments.sort(COMMENT_ORDER);
-		
-		Map<Rating, Integer> ratings = new HashMap<>();
-		ratings.put(Rating.A_LEGITIMATE, numberInfo.getRatingLegitimate());
-		ratings.put(Rating.C_PING, numberInfo.getRatingPing());
-		ratings.put(Rating.D_POLL, numberInfo.getRatingPoll());
-		ratings.put(Rating.E_ADVERTISING, numberInfo.getRatingAdvertising());
-		ratings.put(Rating.F_GAMBLE, numberInfo.getRatingGamble());
-		ratings.put(Rating.G_FRAUD, numberInfo.getRatingFraud());
+
+		Map<Rating, Integer> ratings;
+		if (suppressDetails) {
+			ratings = Collections.emptyMap();
+		} else {
+			ratings = new HashMap<>();
+			ratings.put(Rating.A_LEGITIMATE, numberInfo.getRatingLegitimate());
+			ratings.put(Rating.C_PING, numberInfo.getRatingPing());
+			ratings.put(Rating.D_POLL, numberInfo.getRatingPoll());
+			ratings.put(Rating.E_ADVERTISING, numberInfo.getRatingAdvertising());
+			ratings.put(Rating.F_GAMBLE, numberInfo.getRatingGamble());
+			ratings.put(Rating.G_FRAUD, numberInfo.getRatingFraud());
+		}
 		
 		Rating topRating = info.getRating();
 		
 		return SearchResult.create()
-				.setPhoneId(phone)
+				.setPhoneId(phoneId)
 				.setNumber(number)
 				.setComments(shownComments)
 				.setInfo(info)
@@ -491,7 +488,8 @@ public class SearchServlet extends HttpServlet {
 		
 		// Shorten comments from meta search.
 		for (UserComment comment : searchResult.getComments()) {
-			if (comment.getService() != null && comment.getComment().length() > 280) {
+			if (comment.getService() != null && !comment.getService().isEmpty()
+					&& comment.getComment() != null && comment.getComment().length() > 280) {
 				comment.setComment(comment.getComment().substring(0, 277) + "...");
 			}
 
@@ -503,8 +501,10 @@ public class SearchServlet extends HttpServlet {
 		
 		req.setAttribute(COMMENTS_ATTR, searchResult.getComments());
 
-		// The canonical path of this page.
-		req.setAttribute(PATH_ATTR, req.getServletPath() + '/' + searchResult.getPhoneId());
+		// The canonical path of this page (use internationalized zeroZero form).
+		String canonicalPhone = searchResult.getNumber().getZeroZero();
+		req.setAttribute(PATH_ATTR, req.getServletPath() + '/' + canonicalPhone);
+		req.setAttribute(DefaultController.CANONICAL_ATTR, "https://phoneblock.net" + req.getContextPath() + req.getServletPath() + '/' + canonicalPhone);
 		
 		req.setAttribute(INFO_ATTR, info);
 		req.setAttribute("searchResult", searchResult);
@@ -520,58 +520,47 @@ public class SearchServlet extends HttpServlet {
 		req.setAttribute(TITLE_ATTR, status + ": Rufnummer ☎ " + searchResult.getPhoneId() + " - PhoneBlock");
 		
         Language lang = DefaultController.selectLanguage(req);
-		ResourceBundle bundle = ResourceBundle.getBundle("Messages", lang.locale);
-		
-		StringBuilder keywords = new StringBuilder();
-		keywords.append("Anrufe, Bewertung");
-		if (searchResult.getNumber().getShortcut() != null) {
-			keywords.append(", ");
-			keywords.append(searchResult.getNumber().getShortcut());
-		}
-		keywords.append(", ");
-		keywords.append(searchResult.getNumber().getZeroZero());
-
-		keywords.append(", ");
-		keywords.append(searchResult.getNumber().getPlus());
-		
-		if (searchResult.getTopRating() != Rating.B_MISSED) {
-			keywords.append(", ");
-			keywords.append(bundle.getString(Ratings.getLabelKey(searchResult.getTopRating())));
-		}
-		
-		keywords.append(", ");
-		keywords.append(status);
-
-		if (searchResult.getNumber().getCity() != null) {
-			keywords.append(", ");
-			keywords.append(searchResult.getNumber().getCity());
-		}
-		
-		req.setAttribute(KEYWORDS_ATTR, keywords.toString());
-		
 		req.setAttribute("ratingCssClass", Ratings.getCssClass(searchResult.getTopRating()));
 		req.setAttribute("ratingLabelKey", Ratings.getLabelKey(searchResult.getTopRating()));
 		
-  		String state = info.isWhiteListed() ? 
-  			"whitelisted" : 
-  			(
-  				info.getVotes() <= 0 ? 
-  				(
-  					info.getVotesWildcard() <= 0 ? 
-  						"legitimate" : 
-  						"wildcard"
-  				) : (
-  					info.getVotes() < minVotes ? 
-  						"suspicious" : 
-  						(
-  							info.isArchived() ? 
-  								"archived" : 
-  								"blocked"
-  						)
-  				)
-  			);
+  		String state = info.isWhiteListed()
+  			? "whitelisted"
+  			: info.getVotes() <= 0
+  				? (info.getVotesWildcard() <= 0 ? "legitimate" : "wildcard")
+  				: info.getVotes() < minVotes
+  					? "suspicious"
+  					: "blocked";
 		
 		req.setAttribute("state", state);
+
+		PhoneNumer number = searchResult.getNumber();
+		String displayNumber = number.getShortcut() != null ? number.getShortcut() : number.getZeroZero();
+		String descKey;
+		Object[] descParams;
+		switch (state) {
+			case "blocked":
+				descKey = "page.phone-info.description.blocked";
+				descParams = new Object[] { displayNumber, Integer.valueOf(info.getVotes()) };
+				break;
+			case "suspicious":
+				descKey = "page.phone-info.description.suspicious";
+				descParams = new Object[] { displayNumber, Integer.valueOf(info.getVotes()) };
+				break;
+			case "wildcard":
+				descKey = "page.phone-info.description.wildcard";
+				descParams = new Object[] { displayNumber, Integer.valueOf(info.getVotesWildcard()) };
+				break;
+			case "whitelisted":
+				descKey = "page.phone-info.description.whitelisted";
+				descParams = new Object[] { displayNumber };
+				break;
+			default:
+				descKey = "page.phone-info.description.legitimate";
+				descParams = new Object[] { displayNumber };
+				break;
+		}
+		req.setAttribute("titleText", I18N.getMessage(lang.locale, "page.phone-info.title__nr", displayNumber));
+		req.setAttribute("descriptionText", I18N.getMessage(lang.locale, descKey, descParams));
 		
 		// Create ratings chart
 		StringBuilder ratingLabels = new StringBuilder();
@@ -596,7 +585,7 @@ public class SearchServlet extends HttpServlet {
 				ratingBackground.append(',');
 				ratingBorder.append(',');
 			}
-			jsString(ratingLabels, bundle.getString(Ratings.getLabelKey(r)));
+			jsString(ratingLabels, I18N.getMessage(lang.locale, Ratings.getLabelKey(r)));
 
 			ratingData.append(ratings.getOrDefault(r, 0));
 
@@ -615,37 +604,47 @@ public class SearchServlet extends HttpServlet {
 		req.setAttribute("ratingBackground", ratingBackground.toString());
 		req.setAttribute("ratingBorder", ratingBorder.toString());
 		
-		// Create search chart
-		SimpleDateFormat fmt = new SimpleDateFormat("dd.MM.");
-		Calendar date = new GregorianCalendar();
-		date.add(Calendar.DAY_OF_MONTH, -(searches.size() - 1));
+		// Per-number activity chart: searches, blocked calls and votes per day.
+		// Skipped when details are suppressed (then SEARCHES_ATTR is empty and the
+		// template hides the chart anyway).
+		if (!searches.isEmpty()) {
+			List<DBDayActivity> activity = DBService.getInstance().getNumberActivity(searchResult.getPhoneId(), 7);
 
-		StringBuilder searchLabels = new StringBuilder();
-		StringBuilder searchData = new StringBuilder();
+			SimpleDateFormat fmt = new SimpleDateFormat("dd.MM.");
+			fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
 
-		boolean first = true;
+			StringBuilder searchLabels = new StringBuilder("[");
+			StringBuilder searchData = new StringBuilder("[");
+			StringBuilder callsData = new StringBuilder("[");
+			StringBuilder votesData = new StringBuilder("[");
 
-		searchLabels.append('[');
-		searchData.append('[');
-		for (Integer cnt : searches) {
-			if (first) {
-				first = false;
-			} else {
-				searchLabels.append(',');
-				searchData.append(',');
+			boolean first = true;
+			for (DBDayActivity a : activity) {
+				if (first) {
+					first = false;
+				} else {
+					searchLabels.append(',');
+					searchData.append(',');
+					callsData.append(',');
+					votesData.append(',');
+				}
+				jsString(searchLabels, fmt.format(new Date(a.getEpochDay() * DB.MILLIS_PER_DAY)));
+				searchData.append(a.getSearches());
+				callsData.append(a.getCalls());
+				votesData.append(a.getVotes());
 			}
-			jsString(searchLabels, fmt.format(date.getTime()));
-			date.add(Calendar.DAY_OF_MONTH, 1);
-			
-			searchData.append(cnt);
-		}
-		searchLabels.append(']');
-		searchData.append(']');
+			searchLabels.append(']');
+			searchData.append(']');
+			callsData.append(']');
+			votesData.append(']');
 
-		req.setAttribute("searchLabels", searchLabels.toString());
-		req.setAttribute("searchData", searchData.toString());
-		
-		TemplateRenderer.getInstance(req).process("/phone-info", req, resp);
+			req.setAttribute("searchLabels", searchLabels.toString());
+			req.setAttribute("searchData", searchData.toString());
+			req.setAttribute("callsData", callsData.toString());
+			req.setAttribute("votesData", votesData.toString());
+		}
+
+		TemplateRenderer.getInstance(req).process(PhoneInfoController.PHONE_INFO_PAGE, req, resp);
 	}
 
 	private static void jsString(StringBuilder js, String txt) {

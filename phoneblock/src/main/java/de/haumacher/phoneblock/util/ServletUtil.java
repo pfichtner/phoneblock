@@ -4,6 +4,8 @@
 package de.haumacher.phoneblock.util;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -12,6 +14,9 @@ import de.haumacher.msgbuf.data.DataObject;
 import de.haumacher.msgbuf.json.JsonWriter;
 import de.haumacher.msgbuf.server.io.WriterAdapter;
 import de.haumacher.msgbuf.xml.XmlSerializable;
+import de.haumacher.phoneblock.app.LoginFilter;
+import de.haumacher.phoneblock.db.settings.UserSettings;
+import de.haumacher.phoneblock.location.LocationService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
@@ -79,6 +84,25 @@ public class ServletUtil {
 		resp.getWriter().write(message);
 	}
 
+	/**
+	 * Prefixes an absolute path of this web application with the given context path.
+	 * 
+	 * <p>
+	 * Deployment descriptors give paths relative to the context (<code>/setup.jsp</code>), while
+	 * redirects need the full path (<code>/pb-test/setup.jsp</code>). Paths that already start with
+	 * the context path, relative paths and full URLs are returned unchanged.
+	 * </p>
+	 */
+	public static String withContextPath(String contextPath, String path) {
+		if (path == null || contextPath == null || contextPath.isEmpty() || !path.startsWith("/") || path.startsWith("//")) {
+			return path;
+		}
+		if (path.equals(contextPath) || path.startsWith(contextPath + "/")) {
+			return path;
+		}
+		return contextPath + path;
+	}
+
 	public static String currentPage(HttpServletRequest req) {
 		String currentPage = (String) req.getAttribute(CURRENT_PAGE);
 		if (currentPage == null) {
@@ -86,6 +110,41 @@ public class ServletUtil {
 			currentPage = requestURI.substring(req.getContextPath().length());
 		}
 		return currentPage;
+	}
+
+	public static String forwardParam(String url, HttpServletRequest req, String ...params) {
+		for (String param : params) {
+			url = forwardParam(url, req, param);
+		}
+		return url;
+	}
+	
+	public static String forwardParam(String url, HttpServletRequest req, String param) {
+		String value = req.getParameter(param);
+		return withParam(url, param, value);
+	}
+	
+	public static String withParam(String url, String param, String tokenLabel) {
+		if (tokenLabel == null || tokenLabel.trim().isEmpty()) {
+			return url;
+		}
+		String separator = url.indexOf('?') < 0 ? "?" : "&";
+		return url += separator + param + "=" + URLEncoder.encode(tokenLabel, StandardCharsets.UTF_8);
+	}
+
+	public static void declareAttribute(HttpServletRequest req, String param) {
+		String tokenLabel = req.getParameter(param);
+		if (tokenLabel != null && !tokenLabel.trim().isEmpty()) {
+			req.setAttribute(param, tokenLabel);
+		}
+	}
+
+	public static String lookupDialPrefix(HttpServletRequest req) {
+		UserSettings settings = LoginFilter.getUserSettings(req);
+		if (settings != null) {
+			return settings.getDialPrefix();
+		}
+		return LocationService.getInstance().browserDialPrefix(req);
 	}
 
 }

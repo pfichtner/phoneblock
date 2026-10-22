@@ -1,0 +1,51 @@
+# Template for sdkconfig.defaults.local. Copy, edit, rebuild:
+#
+#   cp sdkconfig.defaults.local.template sdkconfig.defaults.local
+#   $EDITOR sdkconfig.defaults.local
+#   rm sdkconfig && idf.py build
+#
+# sdkconfig.defaults.local is gitignored — real credentials stay local.
+# Only values that need to differ from sdkconfig.defaults belong here;
+# see sdkconfig.defaults for the documented list of available knobs.
+#
+# The defaults target the EGBO PICO-D4 production dongle. The status
+# LED auto-detects between PICO-D4 (GPIO 10) and WROOM-32 dev boards
+# (GPIO 2), so the same firmware runs on both. Override below for
+# one of these other environments:
+#   1. Real hardware (PICO-D4 or WROOM-32) — only WiFi credentials
+#   2. QEMU emulator                       — Ethernet + NAT, no WiFi
+
+# --- Backend (optional): switch to the test instance for dev work --
+# Tokens are bound to one instance; a pbt_… token from /pb-test only
+# works there, and vice versa.
+#CONFIG_PHONEBLOCK_BASE_URL="https://phoneblock.net/pb-test"
+
+# --- Real hardware: WiFi credentials -------------------------------
+# Required for production AND WROOM-32 dev boards. Skip on QEMU.
+# Leaving the empty defaults from sdkconfig.defaults active produces
+# a build that silently fails to associate, so fill these in here.
+#CONFIG_EXAMPLE_WIFI_SSID="my-ssid"
+#CONFIG_EXAMPLE_WIFI_PASSWORD="my-passphrase"
+
+# --- QEMU emulator -------------------------------------------------
+# Use OpenCores Ethernet instead of WiFi, disable the LED task (no
+# physical LED), and advertise the host's LAN IP + forwarded UDP
+# port in Via/Contact so the Fritz!Box can deliver INVITEs back
+# through QEMU's user-mode NAT. Pair this with
+#   -nic user,model=open_eth,hostfwd=udp::15060-:15060
+# on the QEMU command line.
+#CONFIG_EXAMPLE_CONNECT_WIFI=n
+#CONFIG_EXAMPLE_CONNECT_ETHERNET=y
+#CONFIG_EXAMPLE_USE_OPENETH=y
+#CONFIG_STATUS_LED_GPIO=-1
+#CONFIG_SIP_CONTACT_HOST_OVERRIDE="192.168.178.22"
+#CONFIG_SIP_CONTACT_PORT_OVERRIDE=15060
+
+# --- Dev test hook: pre-tick the runtime toggle --------------------
+# This Kconfig only sets the default state of the "Accept local test
+# calls" toggle in the web UI for fresh / factory-reset devices.
+# Enabling it here means a freshly flashed dev build comes up already
+# answering Fritz!Box *-codes (**622, *21#) as spam, without needing
+# to click through the UI first; the user can still flip the toggle
+# at runtime and the persisted state wins from then on.
+#CONFIG_SIP_TEST_FORCE_SPAM_STAR_NUMBERS=y

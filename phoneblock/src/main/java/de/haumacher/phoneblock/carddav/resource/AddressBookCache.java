@@ -3,7 +3,9 @@
  */
 package de.haumacher.phoneblock.carddav.resource;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,7 +20,7 @@ import de.haumacher.phoneblock.analysis.NumberAnalyzer;
 import de.haumacher.phoneblock.analysis.NumberBlock;
 import de.haumacher.phoneblock.analysis.NumberTree;
 import de.haumacher.phoneblock.db.BlockList;
-import de.haumacher.phoneblock.db.DBNumberInfo;
+import de.haumacher.phoneblock.db.DBBlocklistEntry;
 import de.haumacher.phoneblock.db.IDBService;
 import de.haumacher.phoneblock.db.SpamReports;
 import de.haumacher.phoneblock.db.Users;
@@ -37,7 +39,7 @@ public class AddressBookCache implements ServletContextListener {
 
 	private final Cache<String, AddressBookResource> _userCache = new Cache<>("user");
 
-	private final Cache<ListType, List<NumberBlock>> _numberCache = new Cache<>("common");
+	private final Cache<ListType, CommonList> _numberCache = new Cache<>("common");
 
 	private static AddressBookCache _instance;
 
@@ -72,123 +74,245 @@ public class AddressBookCache implements ServletContextListener {
 	public void flushUserCache(String principal) {
 		_userCache.flush(principal);
 	}
+
+	/**
+	 * Drops every entry from both the per-user and the per-{@link ListType} cache.
+	 * Called after a new blocklist release is published so all clients see the
+	 * fresh content immediately rather than waiting up to the cache TTL.
+	 */
+	public void flushAllCaches() {
+		_userCache.flushAll();
+		_numberCache.flushAll();
+	}
 	
 	/**
 	 * Looks up the block list resource for the given user.
+	 *
+	 * @param settings The user settings (from request attribute).
 	 */
 	public AddressBookResource lookupAddressBook(String rootUrl, String serverRoot, String resourcePath,
-			String principal) {
+			String principal, UserSettings settings) {
 		AddressBookResource cachedResult = _userCache.lookup(principal);
 		if (cachedResult != null) {
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Address book served from cache for: " + principal);
+			}
 			return cachedResult;
 		}
 
 		long now = System.currentTimeMillis();
-		List<NumberBlock> phoneNumbers = loadNumbers(principal, now);
-		AddressBookResource addressBook = new AddressBookResource(rootUrl, serverRoot, resourcePath, principal, phoneNumbers);
+		LoadResult result = computeBlocks(principal, now, settings);
+		LOG.info("Address book computed for: " + principal
+			+ " (" + result.path + ", " + result.blocks.size() + " blocks)");
+		AddressBookResource addressBook = new AddressBookResource(rootUrl, serverRoot, resourcePath, principal,
+				result.blocks, result.etag);
 		return _userCache.put(principal, addressBook);
 	}
 
-	List<NumberBlock> loadNumbers(String principal, long now) {
-		List<NumberBlock> phoneNumbers;
+	/**
+	 * Compute the blocks for the given user without caching the result. Visible for
+	 * testing; the production path goes through {@link #lookupAddressBook}.
+	 */
+	List<NumberBlock> loadNumbers(String principal, long now, UserSettings settings) {
+		return computeBlocks(principal, now, settings).blocks;
+	}
+
+	/**
+	 * Computes the collection ETag for the given user without materializing an
+	 * {@link AddressBookResource} (and therefore without allocating the
+	 * per-block {@link AddressResource} wrappers). Used to serve Depth: 0
+	 * PROPFINDs on the address-book URL — the dominant iOS-polling pattern.
+	 *
+	 * <p>
+	 * The returned ETag is byte-identical to
+	 * {@link AddressBookResource#getEtag()} for the same user state, because
+	 * both go through {@link CollectionEtag}.
+	 * </p>
+	 */
+	public String lookupCollectionEtag(String principal, UserSettings settings) {
+		return computeBlocks(principal, System.currentTimeMillis(), settings).etag;
+	}
+
+	private LoadResult computeBlocks(String principal, long now, UserSettings settings) {
+		ListType listType = ListType.valueOf(settings.getDialPrefix(), settings.getMinVotes(),
+				settings.getMaxLength(), settings.isWildcards(), settings.isNationalOnly());
+
 		try (SqlSession session = _db.db().openSession()) {
 			Users users = session.getMapper(Users.class);
-			UserSettings settings = users.getSettingsRaw(principal);
-			
-			int minVotes = settings.getMinVotes();
-			int maxLength = settings.getMaxLength();
-			boolean wildcards = settings.isWildcards();
-			String dialPrefix = settings.getDialPrefix();
-			boolean national = settings.isNationalOnly();
+			BlockList blocklist = session.getMapper(BlockList.class);
+			SpamReports reports = session.getMapper(SpamReports.class);
 
-			ListType listType = ListType.valueOf(dialPrefix, minVotes, maxLength, wildcards, national);
-			phoneNumbers = loadNumbers(session, users, principal, listType, now);
+			long userId = users.getUserId(principal);
+			List<String> personalizations = blocklist.getPersonalizations(userId);
+			Set<String> exclusions = blocklist.getExcluded(userId);
+			List<String> wildcards = blocklist.getWildcards(userId, true);
+
+			if (personalizations.isEmpty() && exclusions.isEmpty() && wildcards.isEmpty()) {
+				CommonList common = getCommonList(reports, listType, now);
+				int settingsHash = listType.hashCode();
+				String etag = CollectionEtag.compose(common.blocksHash(),
+					CollectionEtag.hashPersonalSingletons(List.of()), settingsHash);
+				return new LoadResult(common.blocks(), settingsHash, etag, "common-only");
+			}
+
+			CommonList common = getCommonList(reports, listType, now);
+			int settingsHash = listType.hashCode() ^ personalSettingsHash(personalizations, exclusions, wildcards);
+
+			if (hasEffectiveExclusion(exclusions, common)) {
+				// Rare path (~0.3% of users): a personal exclusion intersects the
+				// common list and would change wildcard structure. Run the full
+				// per-user pipeline.
+				List<NumberBlock> blocks = loadNumbersFull(reports, personalizations, exclusions, wildcards, listType, now);
+				String etag = CollectionEtag.forFullPipeline(blocks, settingsHash);
+				return new LoadResult(blocks, settingsHash, etag, "full pipeline");
+			}
+
+			// Common buckets + personal singletons (deduplicated against common).
+			List<NumberBlock> blocks = new ArrayList<>(common.blocks());
+			List<String> personalSingletons = new ArrayList<>();
+			for (String phoneId : personalizations) {
+				String phone = NumberAnalyzer.toInternationalFormat(phoneId);
+				if (common.covers(phone)) {
+					continue;
+				}
+				blocks.add(new NumberBlock(phone, List.of(phone)));
+				personalSingletons.add(phone);
+			}
+			// Personal wildcards (#377): emitted as their own '<prefix>*' blocks. A passive
+			// list cannot carve a more-specific personal exclusion out of a wildcard, so the
+			// fine-grained longest-match override stays a device-side capability.
+			for (String wildcardId : wildcards) {
+				String wildcard = NumberAnalyzer.toInternationalFormat(wildcardId) + "*";
+				blocks.add(new NumberBlock(wildcard, List.of(wildcard)));
+				personalSingletons.add(wildcard);
+			}
+			String etag = CollectionEtag.compose(common.blocksHash(),
+				CollectionEtag.hashPersonalSingletons(personalSingletons), settingsHash);
+			return new LoadResult(blocks, settingsHash, etag, "common+personal");
 		}
-		return phoneNumbers;
 	}
 
-	private List<NumberBlock> loadNumbers(SqlSession session, Users users, String principal, ListType listType, long now) {
-		SpamReports reports = session.getMapper(SpamReports.class);
-		BlockList blocklist = session.getMapper(BlockList.class);
-		
-		long userId = users.getUserId(principal);
-		
-		List<String> personalizations = blocklist.getPersonalizations(userId);
-		Set<String> exclusions = blocklist.getExcluded(userId);
-		
-		if (personalizations.isEmpty() && exclusions.isEmpty()) {
-			return getCommonNumbers(reports, listType, now);
+	private static final class LoadResult {
+		final List<NumberBlock> blocks;
+		final int settingsHash;
+		final String etag;
+		final String path;
+
+		LoadResult(List<NumberBlock> blocks, int settingsHash, String etag, String path) {
+			this.blocks = blocks;
+			this.settingsHash = settingsHash;
+			this.etag = etag;
+			this.path = path;
 		}
-		
-		return loadNumbers(reports, personalizations, exclusions, listType, now);
 	}
 
+	/**
+	 * Looks up the unmodified common block list for the given list type. Public API,
+	 * intended for callers that need the shared list without per-user modification.
+	 */
 	public List<NumberBlock> lookupBlockList(ListType listType, long now) {
 		try (SqlSession session = _db.db().openSession()) {
 			SpamReports reports = session.getMapper(SpamReports.class);
-
-			return getCommonNumbers(reports, listType, now);
+			return getCommonList(reports, listType, now).blocks();
 		}
 	}
-	
-	private List<NumberBlock> getCommonNumbers(SpamReports reports, ListType listType, long now) {
-		List<NumberBlock> cachedNumbers = _numberCache.lookup(listType);
-		if (cachedNumbers != null) {
-			return cachedNumbers;
+
+	private CommonList getCommonList(SpamReports reports, ListType listType, long now) {
+		CommonList cached = _numberCache.lookup(listType);
+		if (cached != null) {
+			return cached;
 		}
-		
-		List<NumberBlock> numbers = loadNumbers(reports, Collections.emptyList(), Collections.emptySet(), listType, now);
-		return _numberCache.put(listType, numbers);
+		List<NumberBlock> blocks = loadNumbersFull(reports, Collections.emptyList(), Collections.emptySet(),
+				Collections.emptyList(), listType, now);
+		return _numberCache.put(listType, new CommonList(blocks));
 	}
 
-	private List<NumberBlock> loadNumbers(SpamReports reports, List<String> personalizations, Set<String> exclusions,
-			ListType listType, long now) {
+	/**
+	 * Returns true if any exclusion would actually subtract a number from what the
+	 * user sees in the common list — either as a concrete entry or as a number
+	 * covered by a wildcard. Exclusions on numbers that are not in the common list
+	 * are no-ops and the user can still be served from the common cache.
+	 */
+	static boolean hasEffectiveExclusion(Set<String> exclusions, CommonList common) {
+		for (String phoneId : exclusions) {
+			String phone = NumberAnalyzer.toInternationalFormat(phoneId);
+			if (common.covers(phone)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Hash mixing personalizations and exclusions into the collection ETag so that
+	 * two users with the same common list but different personal lists see distinct
+	 * ETags.
+	 */
+	private static int personalSettingsHash(List<String> personalizations, Set<String> exclusions, List<String> wildcards) {
+		List<String> sortedP = new ArrayList<>(personalizations);
+		Collections.sort(sortedP);
+		List<String> sortedE = new ArrayList<>(exclusions);
+		Collections.sort(sortedE);
+		List<String> sortedW = new ArrayList<>(wildcards);
+		Collections.sort(sortedW);
+		int hash = 1;
+		for (String s : sortedP) {
+			hash = 31 * hash + s.hashCode();
+		}
+		hash = 31 * hash + 0x55555555;
+		for (String s : sortedE) {
+			hash = 31 * hash + s.hashCode();
+		}
+		hash = 31 * hash + 0x33333333;
+		for (String s : sortedW) {
+			hash = 31 * hash + s.hashCode();
+		}
+		return hash;
+	}
+
+	private List<NumberBlock> loadNumbersFull(SpamReports reports, List<String> personalizations, Set<String> exclusions,
+			List<String> wildcards, ListType listType, long now) {
 		boolean nationalOnly = listType.isNationalOnly();
 		String dialPrefix = listType.getDialPrefix();
-		
-		// For legacy compatibility, since numbers in DB are stored in German national format.
-		boolean isGerman = NumberAnalyzer.GERMAN_DIAL_PREFIX.equals(dialPrefix);
-		
-		List<DBNumberInfo> result = reports.getReports();
+
+		// Use the published blocklist state so the address-book content (and
+		// its ETag) only changes once per release, not on every individual
+		// vote (#342). Votes are the bucket floors and Heat the log4 class of
+		// the *region* the list is built for — where the spam reports come
+		// from, not where the number originates (#340): a GB number flooding
+		// German users tops German lists. Both frozen at publication, so a
+		// TTL-expired cache regenerates byte-identical content between two
+		// releases.
+		List<DBBlocklistEntry> result = reports.getPublishedReports(dialPrefix);
 		NumberTree numberTree = new NumberTree();
-		for (DBNumberInfo report : result) {
-			String phone = report.getPhone();
-			
-			if (isGerman) {
-				if (nationalOnly && phone.startsWith("00")) {
-					// Only non-German numbers are stored with country prefix in the DB.
-					continue;
-				}
-			} else {
-				phone = toInternationalFormat(phone);
-				
-				if (nationalOnly && !phone.startsWith(dialPrefix)) {
-					continue;
-				}
+		for (DBBlocklistEntry report : result) {
+			String phoneId = report.getPhone();
+			String phone = NumberAnalyzer.toInternationalFormat(phoneId);
+
+			// Only filter by dial prefix if it's valid and national-only mode is enabled
+			if (nationalOnly && !phone.startsWith(dialPrefix)) {
+				continue;
 			}
-			
-			int votes = report.getVotes();
-			int ageInDays = (int) ((now - report.getUpdated()) / 1000 / 60 / 60 / 24);
-			
-			numberTree.insert(phone, votes, ageInDays);
+
+			numberTree.insert(phone, report.getVotes(), report.getHeat());
 		}
 
 		// Enter white-listed numbers with with negative weight to prevent adding those numbers to wildcard blocks. 
 		Set<String> whitelist = reports.getWhiteList();
 		for (String phone : whitelist) {
-			phone = isGerman ? phone : toInternationalFormat(phone);
+			phone = NumberAnalyzer.toInternationalFormat(phone);
 			
 			numberTree.insert(phone, -1_000_000, 0);
 		}
-		for (String phone : exclusions) {
-			phone = isGerman ? phone : toInternationalFormat(phone);
+		for (String phoneId : exclusions) {
+			String phone = NumberAnalyzer.toInternationalFormat(phoneId);
 
 			numberTree.insert(phone, -1_000_000, 0);
 		}
 		
 		// Make sure to override whitelist entries with personal blacklist entries.
-		for (String phone : personalizations) {
-			phone = isGerman ? phone : toInternationalFormat(phone);
+		for (String phoneId : personalizations) {
+			String phone = NumberAnalyzer.toInternationalFormat(phoneId);
 
 			numberTree.insert(phone, 10_000_000, 0);
 		}
@@ -196,21 +320,76 @@ public class AddressBookCache implements ServletContextListener {
 		if (listType.useWildcards()) {
 			numberTree.markWildcards();
 		}
-		
-		return numberTree.createNumberBlocks(listType.getMinVotes(), listType.getMaxLength(), listType.getDialPrefix());
+
+		// Personal wildcards (#377) are inserted after markWildcards so they apply even when
+		// automatic wildcard folding is off and never tip a common ancestor into a wildcard.
+		for (String wildcardId : wildcards) {
+			numberTree.insertWildcard(NumberAnalyzer.toInternationalFormat(wildcardId), 10_000_000, 0);
+		}
+
+		return numberTree.createNumberBlocksByPrefix(listType.getMinVotes(), listType.getMaxLength());
 	}
 
-	private static String toInternationalFormat(String phone) {
-		// Numbers are stored in German national format, internationalize them.
-		if (phone.startsWith("00")) {
-			phone = "+" + phone.substring(2);
-		} else {
-			// The number is a national German number (that must start with a single zero).
-			phone = NumberAnalyzer.GERMAN_DIAL_PREFIX + phone.substring(1);
+	/**
+	 * Common (per-{@link ListType}) block list with side-indexes used to test whether
+	 * a given phone number would already be covered by the common list — either by
+	 * a concrete bucket member or by a wildcard.
+	 */
+	static final class CommonList {
+		private final List<NumberBlock> _blocks;
+		private final Set<String> _concrete;
+		private final List<String> _wildcardPrefixes;
+		private final String _blocksHash;
+
+		CommonList(List<NumberBlock> blocks) {
+			_blocks = blocks;
+			Set<String> concrete = new HashSet<>();
+			List<String> wildcards = new ArrayList<>();
+			for (NumberBlock b : blocks) {
+				for (String n : b.getNumbers()) {
+					if (n.endsWith("*")) {
+						wildcards.add(n.substring(0, n.length() - 1));
+					} else {
+						concrete.add(n);
+					}
+				}
+			}
+			Collections.sort(wildcards);
+			_concrete = concrete;
+			_wildcardPrefixes = wildcards;
+			_blocksHash = CollectionEtag.hashBlocks(blocks);
 		}
-		return phone;
+
+		List<NumberBlock> blocks() {
+			return _blocks;
+		}
+
+		/**
+		 * Precomputed hash of the {@link #blocks()} content, fed into the
+		 * collection ETag composition for every user that shares this common
+		 * list. Computed once per refresh of this cache entry.
+		 */
+		String blocksHash() {
+			return _blocksHash;
+		}
+
+		/**
+		 * True if {@code number} (in international format) is already covered by the
+		 * common list — concretely or under a wildcard.
+		 */
+		boolean covers(String number) {
+			if (_concrete.contains(number)) {
+				return true;
+			}
+			for (String prefix : _wildcardPrefixes) {
+				if (number.startsWith(prefix)) {
+					return true;
+				}
+			}
+			return false;
+		}
 	}
-	
+
 	private static final class Cache<K, V> {
 		
 		private static final long FLUSH_INTERVAL_NANOS = 1_000_000_000L * 60 * 1;
@@ -241,6 +420,13 @@ public class AddressBookCache implements ServletContextListener {
 		 */
 		public void flush(K key) {
 			_index.remove(key);
+		}
+
+		/**
+		 * Drops every entry from this cache.
+		 */
+		public void flushAll() {
+			_index.clear();
 		}
 		
 		public V lookup(K key) {

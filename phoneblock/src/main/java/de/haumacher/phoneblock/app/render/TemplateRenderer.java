@@ -8,11 +8,18 @@ import org.thymeleaf.ITemplateEngine;
 import org.thymeleaf.web.servlet.IServletWebExchange;
 import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
+import de.haumacher.phoneblock.app.CreateAuthTokenServlet;
 import de.haumacher.phoneblock.app.SettingsServlet;
+import de.haumacher.phoneblock.app.render.controller.BlacklistController;
 import de.haumacher.phoneblock.app.render.controller.LoginController;
+import de.haumacher.phoneblock.app.render.controller.MobileLoginController;
 import de.haumacher.phoneblock.app.render.controller.PhoneInfoController;
 import de.haumacher.phoneblock.app.render.controller.RequireLoginController;
 import de.haumacher.phoneblock.app.render.controller.SettingsController;
+import de.haumacher.phoneblock.app.render.controller.WhitelistController;
+import de.haumacher.phoneblock.app.render.controller.ShowApiKeyController;
+import de.haumacher.phoneblock.app.render.controller.ShowCredentialsController;
+import de.haumacher.phoneblock.app.render.controller.StatsController;
 import de.haumacher.phoneblock.app.render.controller.StatusController;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,16 +28,27 @@ import jakarta.servlet.http.HttpServletResponse;
 public class TemplateRenderer {
 
 	private static final String RENDERER = "renderer";
-    private static Map<String, WebController> controllersByURL;
 
+	/**
+	 * Template path for the bank transfer support page.
+	 */
+	public static final String SUPPORT_BANKTRANSFER_PAGE = "/support-banktransfer";
+
+    private static Map<String, WebController> controllersByURL;
 
     static {
         controllersByURL = new HashMap<String, WebController>();
-        controllersByURL.put("/login", new LoginController());
-        controllersByURL.put("/status", new StatusController());
+        controllersByURL.put(LoginController.LOGIN_PAGE, new LoginController(SettingsServlet.PATH));
+        controllersByURL.put(CreateAuthTokenServlet.MOBILE_LOGIN, new MobileLoginController());
+        controllersByURL.put(StatusController.STATUS_PAGE, new StatusController());
+        controllersByURL.put(StatsController.STATS_PAGE, new StatsController());
         controllersByURL.put(SettingsServlet.PATH, new SettingsController());
-        controllersByURL.put("/phone-info", new PhoneInfoController());
-        controllersByURL.put("/support-banktransfer", new RequireLoginController());
+        controllersByURL.put(BlacklistController.PATH, new BlacklistController());
+        controllersByURL.put(WhitelistController.PATH, new WhitelistController());
+        controllersByURL.put(PhoneInfoController.PHONE_INFO_PAGE, new PhoneInfoController());
+        controllersByURL.put(SUPPORT_BANKTRANSFER_PAGE, new RequireLoginController());
+        controllersByURL.put(ShowCredentialsController.SHOW_CREDENTIALS_PAGE, new ShowCredentialsController());
+        controllersByURL.put(ShowApiKeyController.SHOW_API_KEY_PAGE, new ShowApiKeyController());
     }
     
 	private JakartaServletWebApplication _application;

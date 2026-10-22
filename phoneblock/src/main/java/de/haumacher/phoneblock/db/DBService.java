@@ -3,12 +3,18 @@
  */
 package de.haumacher.phoneblock.db;
 
+import java.sql.Connection;
 import java.sql.SQLException;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
 import javax.naming.NamingException;
 
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.TransactionIsolationLevel;
 import org.h2.jdbcx.JdbcConnectionPool;
 import org.h2.jdbcx.JdbcDataSource;
 import org.h2.tools.Server;
@@ -123,6 +129,32 @@ public class DBService implements IDBService, ServletContextListener {
 		
 		_pool = JdbcConnectionPool.create(dataSource);
 		INSTANCE = new DB(_rnd.getRnd(), config, _pool, _indexer, _scheduler, _mail == null ? null : _mail.getMailService());
+
+		// Configure blocklist visibility threshold
+		int minVisibleVotes = loadMinVisibleVotes();
+		INSTANCE.setMinVisibleVotes(minVisibleVotes);
+	}
+
+	/**
+	 * Loads the minimum visible votes threshold from JNDI or system properties.
+	 */
+	private int loadMinVisibleVotes() {
+		int minVisibleVotes = DB.DEFAULT_MIN_VISIBLE_VOTES;
+		try {
+			InitialContext initCtx = new InitialContext();
+			Context envCtx = (Context) initCtx.lookup("java:comp/env");
+			try {
+				minVisibleVotes = ((Number) envCtx.lookup("blocklist/minVisibleVotes")).intValue();
+			} catch (NamingException ex) {
+				String value = System.getProperty("blocklist.minVisibleVotes");
+				if (value != null) {
+					minVisibleVotes = Integer.parseInt(value);
+				}
+			}
+		} catch (NamingException ex) {
+			LOG.info("Not using JNDI configuration for blocklist: {}", ex.getMessage());
+		}
+		return minVisibleVotes;
 	}
 
 	protected int defaultDbPort() {
@@ -151,12 +183,78 @@ public class DBService implements IDBService, ServletContextListener {
 		return INSTANCE;
 	}
 
-	/** 
+	/**
 	 * Access to the database.
 	 */
 	@Override
 	public DB db() {
 		return INSTANCE;
+	}
+
+	/**
+	 * The number of connections currently checked out of the connection pool, or <code>-1</code>
+	 * if no pool is active. A steadily climbing value indicates a connection leak.
+	 */
+	public int getActiveConnections() {
+		JdbcConnectionPool pool = _pool;
+		return pool == null ? -1 : pool.getActiveConnections();
+	}
+
+	/**
+	 * A {@link SqlSessionFactory} that lazily delegates to the underlying database.
+	 *
+	 * <p>
+	 * Can be called before this service is initialized. The actual database is
+	 * only accessed when a session is opened.
+	 * </p>
+	 */
+	public SqlSessionFactory getSessionFactory() {
+		return new SqlSessionFactory() {
+			@Override
+			public SqlSession openSession() {
+				return db().openSession();
+			}
+
+			@Override
+			public SqlSession openSession(boolean autoCommit) {
+				return db().getSessionFactory().openSession(autoCommit);
+			}
+
+			@Override
+			public SqlSession openSession(Connection connection) {
+				return db().getSessionFactory().openSession(connection);
+			}
+
+			@Override
+			public SqlSession openSession(TransactionIsolationLevel level) {
+				return db().getSessionFactory().openSession(level);
+			}
+
+			@Override
+			public SqlSession openSession(ExecutorType execType) {
+				return db().getSessionFactory().openSession(execType);
+			}
+
+			@Override
+			public SqlSession openSession(ExecutorType execType, boolean autoCommit) {
+				return db().getSessionFactory().openSession(execType, autoCommit);
+			}
+
+			@Override
+			public SqlSession openSession(ExecutorType execType, TransactionIsolationLevel level) {
+				return db().getSessionFactory().openSession(execType, level);
+			}
+
+			@Override
+			public SqlSession openSession(ExecutorType execType, Connection connection) {
+				return db().getSessionFactory().openSession(execType, connection);
+			}
+
+			@Override
+			public Configuration getConfiguration() {
+				return db().getSessionFactory().getConfiguration();
+			}
+		};
 	}
 
     @Override

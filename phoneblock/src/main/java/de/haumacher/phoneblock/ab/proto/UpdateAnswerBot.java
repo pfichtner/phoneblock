@@ -27,6 +27,9 @@ public class UpdateAnswerBot extends BotRequest {
 	/** @see #isWildcards() */
 	public static final String WILDCARDS__PROP = "wildcards";
 
+	/** @see #isAcceptLocal() */
+	public static final String ACCEPT_LOCAL__PROP = "acceptLocal";
+
 	private boolean _enabled = false;
 
 	private boolean _preferIPv4 = false;
@@ -34,6 +37,8 @@ public class UpdateAnswerBot extends BotRequest {
 	private int _minVotes = 0;
 
 	private boolean _wildcards = false;
+
+	private boolean _acceptLocal = false;
 
 	/**
 	 * Creates a {@link UpdateAnswerBot} instance.
@@ -129,6 +134,26 @@ public class UpdateAnswerBot extends BotRequest {
 		_wildcards = value;
 	}
 
+	/**
+	 * Whether to accept calls from local phones (numbers starting with *).
+	 */
+	public final boolean isAcceptLocal() {
+		return _acceptLocal;
+	}
+
+	/**
+	 * @see #isAcceptLocal()
+	 */
+	public de.haumacher.phoneblock.ab.proto.UpdateAnswerBot setAcceptLocal(boolean value) {
+		internalSetAcceptLocal(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isAcceptLocal()} without chain call utility. */
+	protected final void internalSetAcceptLocal(boolean value) {
+		_acceptLocal = value;
+	}
+
 	@Override
 	public de.haumacher.phoneblock.ab.proto.UpdateAnswerBot setId(long value) {
 		internalSetId(value);
@@ -140,16 +165,39 @@ public class UpdateAnswerBot extends BotRequest {
 		return UPDATE_ANSWER_BOT__TYPE;
 	}
 
-	private static java.util.List<String> PROPERTIES = java.util.Collections.unmodifiableList(
-		java.util.Arrays.asList(
+	@SuppressWarnings("hiding")
+	static final java.util.List<String> PROPERTIES;
+	static {
+		java.util.List<String> local = java.util.Arrays.asList(
 			ENABLED__PROP, 
 			PREFER_IPV_4__PROP, 
 			MIN_VOTES__PROP, 
-			WILDCARDS__PROP));
+			WILDCARDS__PROP, 
+			ACCEPT_LOCAL__PROP);
+		java.util.List<String> tmp = new java.util.ArrayList<>();
+		tmp.addAll(de.haumacher.phoneblock.ab.proto.BotRequest.PROPERTIES);
+		tmp.addAll(local);
+		PROPERTIES = java.util.Collections.unmodifiableList(tmp);
+	}
+
+	@SuppressWarnings("hiding")
+	static final java.util.Set<String> TRANSIENT_PROPERTIES;
+	static {
+		java.util.HashSet<String> tmp = new java.util.HashSet<>();
+		tmp.addAll(de.haumacher.phoneblock.ab.proto.BotRequest.TRANSIENT_PROPERTIES);
+		tmp.addAll(java.util.Arrays.asList(
+				));
+		TRANSIENT_PROPERTIES = java.util.Collections.unmodifiableSet(tmp);
+	}
 
 	@Override
 	public java.util.List<String> properties() {
 		return PROPERTIES;
+	}
+
+	@Override
+	public java.util.Set<String> transientProperties() {
+		return TRANSIENT_PROPERTIES;
 	}
 
 	@Override
@@ -159,6 +207,7 @@ public class UpdateAnswerBot extends BotRequest {
 			case PREFER_IPV_4__PROP: return isPreferIPv4();
 			case MIN_VOTES__PROP: return getMinVotes();
 			case WILDCARDS__PROP: return isWildcards();
+			case ACCEPT_LOCAL__PROP: return isAcceptLocal();
 			default: return super.get(field);
 		}
 	}
@@ -170,6 +219,7 @@ public class UpdateAnswerBot extends BotRequest {
 			case PREFER_IPV_4__PROP: internalSetPreferIPv4((boolean) value); break;
 			case MIN_VOTES__PROP: internalSetMinVotes((int) value); break;
 			case WILDCARDS__PROP: internalSetWildcards((boolean) value); break;
+			case ACCEPT_LOCAL__PROP: internalSetAcceptLocal((boolean) value); break;
 			default: super.set(field, value); break;
 		}
 	}
@@ -192,6 +242,8 @@ public class UpdateAnswerBot extends BotRequest {
 		out.value(getMinVotes());
 		out.name(WILDCARDS__PROP);
 		out.value(isWildcards());
+		out.name(ACCEPT_LOCAL__PROP);
+		out.value(isAcceptLocal());
 	}
 
 	@Override
@@ -201,6 +253,7 @@ public class UpdateAnswerBot extends BotRequest {
 			case PREFER_IPV_4__PROP: setPreferIPv4(in.nextBoolean()); break;
 			case MIN_VOTES__PROP: setMinVotes(in.nextInt()); break;
 			case WILDCARDS__PROP: setWildcards(in.nextBoolean()); break;
+			case ACCEPT_LOCAL__PROP: setAcceptLocal(in.nextBoolean()); break;
 			default: super.readField(in, field);
 		}
 	}

@@ -1,0 +1,15 @@
+build/
+build-*/
+release/
+version.txt
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+sdkconfig.release-stash
+sdkconfig.defaults.local
+sdkconfig.defaults.local.*
+*.bin
+!sdkconfig.defaults
+!sdkconfig.defaults.local.template
+scripts/release.settings

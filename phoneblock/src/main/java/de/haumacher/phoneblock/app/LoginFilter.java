@@ -1,16 +1,19 @@
 package de.haumacher.phoneblock.app;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
-import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.haumacher.phoneblock.app.render.DefaultController;
 import de.haumacher.phoneblock.db.DB;
 import de.haumacher.phoneblock.db.DBService;
-import de.haumacher.phoneblock.db.Users;
+import de.haumacher.phoneblock.db.TokenInfo;
 import de.haumacher.phoneblock.db.settings.AuthToken;
+import de.haumacher.phoneblock.db.settings.UserSettings;
+import de.haumacher.phoneblock.shared.Language;
 import jakarta.servlet.Filter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.FilterConfig;
@@ -33,14 +36,12 @@ public abstract class LoginFilter implements Filter {
 	
 	private static final int ONE_YEAR_SECONDS = 60*60*24*365;
 
-	/**
-	 * Session attribute storing the ID of the authorization token used to log in.
-	 */
-	public static final String AUTHORIZATION_ATTR = "tokenId";
-
 	private static final String BEARER_AUTH = "Bearer ";
 
-	public static final String AUTHENTICATED_USER_ATTR = "authenticated-user";
+	/**
+	 * Attribute name for the authentication context (stored in both session and request).
+	 */
+	private static final String AUTH_CONTEXT_ATTR = "auth-context";
 	
 	@Override
 	public void init(FilterConfig filterConfig) throws ServletException {
@@ -51,46 +52,48 @@ public abstract class LoginFilter implements Filter {
 	public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
 		HttpServletRequest req = (HttpServletRequest) request;
 		HttpServletResponse resp = (HttpServletResponse) response;
-		
+
 		if (allowSessionAuth(req)) {
 			// Short-cut to prevent authenticating every request.
 			HttpSession session = req.getSession(false);
 			if (session != null) {
-				String userName = LoginFilter.getAuthenticatedUser(session);
-				if (userName != null) {
-					setRequestUser(req, userName);
-					loggedIn(req, resp, userName, chain);
+				AuthContext authContext = getAuthContext(session);
+				if (authContext != null) {
+					// Copy AuthContext from session to request
+					req.setAttribute(AUTH_CONTEXT_ATTR, authContext);
+
+					loggedIn(req, resp, chain);
 					return;
 				}
 			}
 		}
 
 		DB db = DBService.getInstance();
-		
+
 		if (allowCookieAuth(req)) {
 			Cookie[] cookies = req.getCookies();
 			if (cookies != null) {
 				for (Cookie cookie : cookies) {
 					if (LOGIN_COOKIE.equals(cookie.getName())) {
 						String token = cookie.getValue();
-						AuthToken authorization = db.checkAuthToken(token, System.currentTimeMillis(), req.getHeader("User-Agent"), true);
-						if (authorization != null && checkTokenAuthorization(req, authorization)) {
-							String userName = authorization.getUserName();
+						AuthContext authContext = db.checkAuthToken(token, System.currentTimeMillis(), req.getHeader("User-Agent"), true);
+						if (authContext != null && checkTokenAuthorization(req, authContext.getAuthorization())) {
+							String userName = authContext.getUserName();
 							LOG.info("Accepted login token for user {} accessing '{}'.", userName, req.getServletPath());
-							
-							setUser(req, userName);
-							
-							// Update cookie to extend lifetime and invalidate old version of cookie. 
+
+							setUser(req, authContext);
+
+							// Update cookie to extend lifetime and invalidate old version of cookie.
 							// This enhances security since a token can be used only once.
-							setLoginCookie(req, resp, authorization);
-							
-							loggedIn(req, resp, userName, chain);
+							setLoginCookie(req, resp, authContext.getAuthorization());
+
+							loggedIn(req, resp, chain);
 							return;
 						} else {
-							if (authorization == null) {
-								LOG.info("Dropping outdated login cookie accessing '{}': {}", req.getServletPath(), token);
+							if (authContext == null) {
+								LOG.info("Dropping outdated login cookie accessing '{}' (fingerprint '{}').", req.getServletPath(), TokenInfo.fingerprint(token));
 							} else {
-								LOG.info("Login not allowed with cookie accessing '{}': {}", req.getServletPath(), token);
+								LOG.info("Login not allowed with cookie accessing '{}' (token {}).", req.getServletPath(), authContext.getAuthorization().getId());
 							}
 							removeLoginCookie(req, resp);
 						}
@@ -99,42 +102,67 @@ public abstract class LoginFilter implements Filter {
 				}
 			}
 		}
-		
+
 		String authHeader = req.getHeader("Authorization");
 		if (authHeader != null) {
 			if (authHeader.startsWith(BEARER_AUTH)) {
 				String token = authHeader.substring(BEARER_AUTH.length());
-				
-				AuthToken authorization = db.checkAuthToken(token, System.currentTimeMillis(), req.getHeader("User-Agent"), false);
-				if (authorization != null) {
-					String userName = authorization.getUserName();
-					
+
+				AuthContext authContext = db.checkAuthToken(token, System.currentTimeMillis(), req.getHeader("User-Agent"), false);
+				if (authContext != null) {
+					AuthToken authorization = authContext.getAuthorization();
+					String userName = authContext.getUserName();
+
 					if (checkTokenAuthorization(req, authorization)) {
-						LOG.info("Accepted bearer token {}...({}) for user {}.", token.substring(0, 16), token, authorization.getId(), userName);
-						
-						setUser(req, userName);
-						
-						loggedIn(req, resp, userName, chain);
+						LOG.info("Accepted bearer token {} for user {}.", authorization.getId(), userName);
+
+						setUser(req, authContext);
+						loggedIn(req, resp, chain);
 						return;
 					} else {
-						LOG.info("Access to {} with bearer token {}... rejected due to privilege mismatch for user {}.", 
-								req.getServletPath(), token.substring(0, 16), userName);
+						LOG.info("Access to {} with bearer token {} rejected due to privilege mismatch for user {}.",
+								req.getServletPath(), authorization.getId(), userName);
 					}
 				}
 			} else if (allowBasicAuth(req)) {
-				String userName = db.basicAuth(authHeader);
-				if (userName != null) {
-					setUser(req, userName);
-					loggedIn(req, resp, userName, chain);
+				AuthContext authContext = db.basicAuth(authHeader, req.getHeader("User-Agent"));
+				if (authContext != null) {
+					setUser(req, authContext);
+					loggedIn(req, resp, chain);
 					return;
 				}
 			}
 		}
-		
+
+		// Check for token in URL parameter (for browser links from mobile app)
+		String tokenParam = req.getParameter("token");
+		if (tokenParam != null && !tokenParam.trim().isEmpty()) {
+			AuthContext authContext = db.checkAuthToken(tokenParam, System.currentTimeMillis(), req.getHeader("User-Agent"), false);
+			if (authContext != null) {
+				AuthToken authorization = authContext.getAuthorization();
+				String userName = authContext.getUserName();
+
+				if (authorization.isAccessLogin() && checkTokenAuthorization(req, authorization)) {
+					LOG.info("Accepted token parameter {} for user {}.", authorization.getId(), userName);
+
+					// Create session to avoid keeping token in URL
+					setUser(req, authContext);
+
+					// Redirect to same URL without token parameter to remove it from browser history
+					String redirectUrl = buildUrlWithoutTokenParameter(req);
+					resp.sendRedirect(redirectUrl);
+					return;
+				} else {
+					LOG.info("Access to {} with token parameter {} rejected due to privilege mismatch for user {}.",
+							req.getServletPath(), authorization.getId(), userName);
+				}
+			}
+		}
+
 		requestLogin(req, resp, chain);
 	}
 
-	protected void loggedIn(HttpServletRequest request, HttpServletResponse response, String userName, FilterChain chain)
+	protected void loggedIn(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 			throws IOException, ServletException {
 		chain.doFilter(request, response);
 	}
@@ -151,8 +179,8 @@ public abstract class LoginFilter implements Filter {
 		return true;
 	}
 
-	protected void setUser(HttpServletRequest req, String userName) {
-		setSessionUser(req, userName);
+	protected void setUser(HttpServletRequest req, AuthContext authContext) {
+		setSessionUser(req, authContext);
 	}
 
 	/**
@@ -181,8 +209,6 @@ public abstract class LoginFilter implements Filter {
 		loginCookie.setAttribute("SameSite", "Strict");
 		loginCookie.setMaxAge(ONE_YEAR_SECONDS);
 		resp.addCookie(loginCookie);
-		
-		req.getSession().setAttribute(AUTHORIZATION_ATTR, authorization);
 	}
 
 	/**
@@ -192,12 +218,12 @@ public abstract class LoginFilter implements Filter {
 		// Invalidate authorization token.
 		HttpSession session = request.getSession(false);
 		if (session != null) {
-			AuthToken token = (AuthToken) session.getAttribute(AUTHORIZATION_ATTR);
-			if (token != null) {
-				DBService.getInstance().invalidateAuthToken(token.getId());
+			AuthContext authContext = getAuthContext(session);
+			if (authContext != null) {
+				DBService.getInstance().invalidateAuthToken(authContext.getAuthorization().getId());
 			}
 		}
-		
+
 		removeLoginCookie(request, response);
 	}
 
@@ -216,48 +242,126 @@ public abstract class LoginFilter implements Filter {
 	}
 
 	/**
-	 * Retrieves the authenticated user from a request attribute set by a {@link LoginFilter} for the service URI.
-	 * 
+	 * The user name of the authenticated user from a request attribute set by a {@link LoginFilter} for the service URI.
+	 *
 	 * @see BasicLoginFilter
 	 */
 	public static String getAuthenticatedUser(HttpServletRequest req) {
-		return (String) req.getAttribute(AUTHENTICATED_USER_ATTR);
+		AuthContext authContext = getAuthContext(req);
+		return authContext == null ? null : authContext.getUserName();
 	}
-	
-	/** 
-	 * The authenticated user of the given session.
+
+	/**
+	 * The authentication context for the given request.
 	 */
-	public static String getAuthenticatedUser(HttpSession session) {
-		if (session == null) {
-			return null;
+	public static AuthContext getAuthContext(HttpServletRequest req) {
+		return (AuthContext) req.getAttribute(AUTH_CONTEXT_ATTR);
+	}
+
+	private static AuthContext getAuthContext(HttpSession session) {
+		return (AuthContext) session.getAttribute(AUTH_CONTEXT_ATTR);
+	}
+
+	/**
+	 * The authenticated user for the given request.
+	 */
+	public static AuthToken getAuthorization(HttpServletRequest req) {
+		AuthContext authContext = getAuthContext(req);
+		return authContext == null ? null : authContext.getAuthorization();
+	}
+
+	/**
+	 * Gets the user settings from the request attribute.
+	 *
+	 * @return UserSettings or null if not logged in
+	 */
+	public static UserSettings getUserSettings(HttpServletRequest req) {
+		AuthContext authContext = getAuthContext(req);
+		return authContext == null ? null : authContext.getSettings();
+	}
+
+	/**
+	 * Refreshes the cached user settings after an update.
+	 */
+	public static void refreshUserSettings(HttpServletRequest req, UserSettings settings) {
+		AuthContext oldContext = getAuthContext(req);
+		if (oldContext == null) {
+			return;
 		}
-		return (String) session.getAttribute(AUTHENTICATED_USER_ATTR);
-	}
 
-	/** 
-	 * Adds the given user name to the request and session.
-	 */
-	public static void setSessionUser(HttpServletRequest req, String userName) {
-		setRequestUser(req, userName);
-		setSessionUser(req.getSession(), userName);
-	}
+		// Create new AuthContext with updated settings
+		AuthContext newContext = new AuthContext(oldContext.getAuthorization(), settings);
 
-	private static void setSessionUser(HttpSession session, String userName) {
-		session.setAttribute(AUTHENTICATED_USER_ATTR, userName);
-		
-		DB db = DBService.getInstance();
-		try (SqlSession tx = db.openSession()) {
-			Users users = tx.getMapper(Users.class);
-			String lang = users.getLocale(userName);
-			session.setAttribute(DefaultController.LANG_ATTR, DefaultController.selectLanguage(lang));
+		// Update in request
+		req.setAttribute(AUTH_CONTEXT_ATTR, newContext);
+
+		// Update in session if available
+		HttpSession session = req.getSession(false);
+		if (session != null) {
+			session.setAttribute(AUTH_CONTEXT_ATTR, newContext);
+			Language selectedLang = Language.fromTag(settings.getLang());
+			session.setAttribute(DefaultController.LANG_ATTR, selectedLang);
 		}
 	}
 
-	/** 
-	 * Adds the given user name to the current request.
+	/**
+	 * Adds the given authentication context to the request and session.
 	 */
-	public static void setRequestUser(HttpServletRequest req, String userName) {
-		req.setAttribute(AUTHENTICATED_USER_ATTR, userName);
+	public static void setSessionUser(HttpServletRequest req, AuthContext authContext) {
+		// Store in request
+		req.setAttribute(AUTH_CONTEXT_ATTR, authContext);
+
+		// Store in session
+		HttpSession session = req.getSession();
+		session.setAttribute(AUTH_CONTEXT_ATTR, authContext);
+
+		Language selectedLang = Language.fromTag(authContext.getSettings().getLang());
+		session.setAttribute(DefaultController.LANG_ATTR, selectedLang);
+
+		LOG.debug("Initialized user session for '{}' in language '{}'.", authContext.getUserName(), selectedLang);
+	}
+
+	/**
+	 * Adds the given authentication context to the current request (without session).
+	 */
+	protected static void setRequestUser(HttpServletRequest req, AuthContext authContext) {
+		req.setAttribute(AUTH_CONTEXT_ATTR, authContext);
+	}
+
+	/**
+	 * Builds a redirect URL from the request without the token parameter.
+	 * Preserves all other query parameters and the request path.
+	 */
+	private static String buildUrlWithoutTokenParameter(HttpServletRequest req) {
+		StringBuilder url = new StringBuilder();
+		url.append(req.getContextPath());
+		url.append(req.getServletPath());
+
+		if (req.getPathInfo() != null) {
+			url.append(req.getPathInfo());
+		}
+
+		// Iterate through parameters and filter out the token
+		StringBuilder query = new StringBuilder();
+		for (Map.Entry<String, String[]> entry : req.getParameterMap().entrySet()) {
+			String name = entry.getKey();
+			if (!"token".equals(name)) {
+				for (String value : entry.getValue()) {
+					if (query.length() > 0) {
+						query.append("&");
+					}
+					query.append(java.net.URLEncoder.encode(name, StandardCharsets.UTF_8))
+						 .append("=")
+						 .append(java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+				}
+			}
+		}
+
+		if (query.length() > 0) {
+			url.append("?").append(query);
+		}
+
+		return url.toString();
 	}
 
 }

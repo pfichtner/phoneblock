@@ -4,31 +4,11 @@ CREATE TABLE PROPERTIES (
 	CONSTRAINT PROPERTIES_PK PRIMARY KEY (NAME)
 );
 
-INSERT INTO PROPERTIES (NAME, VAL) VALUES('db.version', '8');
+INSERT INTO PROPERTIES (NAME, VAL) VALUES('db.version', '52');
+INSERT INTO PROPERTIES (NAME, VAL) VALUES('blocklist.version', '1');
+INSERT INTO PROPERTIES (NAME, VAL) VALUES('diag.ruleset.version', '1');
+INSERT INTO PROPERTIES (NAME, VAL) VALUES('diag.mail.enabled', 'false');
 
-
-CREATE TABLE BLOCKLIST (
-	OWNER BIGINT NOT NULL,
-	PHONE CHARACTER VARYING(100) NOT NULL,
-
-	CONSTRAINT BLOCKLIST_PK PRIMARY KEY (OWNER,PHONE)
-);
-
-CREATE TABLE EXCLUDES (
-	OWNER BIGINT NOT NULL,
-	PHONE CHARACTER VARYING(100) NOT NULL,
-
-	CONSTRAINT EXCLUDES_PK PRIMARY KEY (OWNER,PHONE)
-);
-
-CREATE TABLE SPAMREPORTS (
-	PHONE VARCHAR(100) NOT NULL,
-	VOTES INTEGER DEFAULT 1 NOT NULL,
-	LASTUPDATE BIGINT NOT NULL,
-	DATEADDED BIGINT DEFAULT 0 NOT NULL,
-
-	CONSTRAINT SPAMREPORTS_PK PRIMARY KEY (PHONE)
-);
 
 CREATE TABLE NUMBERS (
 	PHONE CHARACTER VARYING(100) NOT NULL,
@@ -38,7 +18,6 @@ CREATE TABLE NUMBERS (
 	LASTSEARCH BIGINT DEFAULT 0 NOT NULL,
 	LASTPING BIGINT DEFAULT 0 NOT NULL,
 	LASTMETA BIGINT DEFAULT 0 NOT NULL,
-	ACTIVE BOOLEAN DEFAULT TRUE NOT NULL,
 	CALLS INTEGER DEFAULT 0 NOT NULL,
 	VOTES INTEGER DEFAULT 0 NOT NULL,
 	DOWN_VOTES INTEGER DEFAULT 0 NOT NULL,
@@ -50,74 +29,150 @@ CREATE TABLE NUMBERS (
 	GAMBLE INTEGER DEFAULT 0 NOT NULL,
 	FRAUD INTEGER DEFAULT 0 NOT NULL,
 	SEARCHES INTEGER DEFAULT 0 NOT NULL,
-	SEARCHES_CURRENT INTEGER DEFAULT 0 NOT NULL,
-	SEARCHES_BACKUP INTEGER DEFAULT 0 NOT NULL,
+	-- Confidence model (#300): projected-EMA columns. Each cell holds
+	-- Σ wᵢ·exp((tᵢ − t0)/τ); read-time decay applies exp(−(now − t0)/τ).
+	-- HEAT measures activity (~2-week half-life), the two EVIDENCE columns
+	-- drive classification (~4-month half-life).
+	HEAT DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	SPAM_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	LEGIT_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
 	CONSTRAINT NUMBERS_PK PRIMARY KEY (PHONE)
 );
 
 CREATE INDEX NUMBERS_SHA1_IDX ON NUMBERS (SHA1, PHONE);
-CREATE INDEX NUMBERS_ACTIVE_IDX ON NUMBERS (ACTIVE DESC,VOTES DESC);
 CREATE INDEX NUMBERS_UPDATED_IDX ON NUMBERS (UPDATED DESC);
 CREATE INDEX NUMBERS_SEARCHES_IDX ON NUMBERS (SEARCHES DESC);
-CREATE INDEX NUMBERS_SEARCHES_CURRENT_IDX ON NUMBERS (SEARCHES_CURRENT DESC);
+-- Heat-ordered scan for the space-limited blocklist (#336).
+CREATE INDEX NUMBERS_HEAT_IDX ON NUMBERS (HEAT DESC);
+-- Visibility filter on decay-aware evidence (#342). Lets the blocklist
+-- queries do `WHERE SPAM_EVIDENCE >= ?` as an index seek instead of a
+-- full-table scan.
+CREATE INDEX NUMBERS_SPAM_EVIDENCE_IDX ON NUMBERS (SPAM_EVIDENCE DESC);
+-- Top-spammers list on the status page (getTopSpammers): ORDER BY VOTES DESC
+-- LIMIT n. Without this index H2 full-scans NUMBERS and sorts every row; the
+-- DESC index lets it read just the top n ("index sorted").
+CREATE INDEX NUMBERS_VOTES_IDX ON NUMBERS (VOTES DESC);
+
+-- Published blocklist state (#342): one narrow row per number that is (or
+-- recently was) on the public blocklist. VOTES is the bucket floor of the
+-- net evidence at publication time — one of 2, 4, 10, 20, 50, 100 —
+-- frozen until the number crosses into another bucket; 0 marks a
+-- tombstone (the removal signal for incremental sync). Keeping the
+-- published state out of NUMBERS means the publication sweep never
+-- rewrites rows of the big table, so the H2 store does not accumulate
+-- dead pages from scattered updates.
+CREATE TABLE BLOCKLIST (
+	PHONE CHARACTER VARYING(100) NOT NULL,
+	VOTES INTEGER NOT NULL,
+	VERSION BIGINT NOT NULL,
+	-- Published rating snapshot (frozen at publication, like VOTES): the
+	-- dominant category as a Rating enum name (e.g. 'G_FRAUD'), and the last
+	-- activity timestamp. Denormalized so the sync reads need no live NUMBERS
+	-- join per row; a blocklist API entry exposes only this single rating.
+	CATEGORY CHARACTER VARYING(15) DEFAULT 'B_MISSED' NOT NULL,
+	LASTPING BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT BLOCKLIST_PK PRIMARY KEY (PHONE)
+);
+
+-- Incremental sync `?since=N` reads `WHERE VERSION > N`.
+CREATE INDEX BLOCKLIST_VERSION_IDX ON BLOCKLIST (VERSION, PHONE);
+
+-- Published per-region activity (#340/#342): the log4 class of the decoded
+-- NUMBERS_LOCALE.HEAT — where the spam *reports* come from, not where the
+-- number originates. CardDAV ranks its capped per-region lists by this
+-- class, so a GB number flooding German users tops German lists. Frozen at
+-- publication like the vote bucket; classes that decode to 0 are simply
+-- absent. Rows exist only for currently visible BLOCKLIST entries.
+CREATE TABLE BLOCKLIST_LOCALE (
+	PHONE CHARACTER VARYING(100) NOT NULL,
+	DIAL CHARACTER VARYING(8) NOT NULL,
+	HEAT INTEGER NOT NULL,
+	CONSTRAINT BLOCKLIST_LOCALE_PK PRIMARY KEY (PHONE, DIAL)
+);
 
 CREATE TABLE NUMBERS_LOCALE (
 	PHONE CHARACTER VARYING(100) NOT NULL,
 	DIAL CHARACTER VARYING(8) NOT NULL,
 	LASTACCESS BIGINT NOT NULL,
 	SEARCHES INTEGER DEFAULT 0 NOT NULL,
-	VOTES INTEGER DEFAULT 0 NOT NULL,
 	CALLS INTEGER DEFAULT 0 NOT NULL,
+	-- Cumulative per-region spam-vote counter, retained alongside the
+	-- projected SPAM_EVIDENCE EMA below (epic #300): the EMA drives the live
+	-- decay-aware per-region visibility filter, while this raw counter is
+	-- additively kept so the non-decayed per-region signal is never lost.
+	VOTES INTEGER DEFAULT 0 NOT NULL,
+	-- Projected Heat EMA scoped to one DIAL — same encoding as NUMBERS.HEAT
+	-- (see Ema). Drives the dial-aware space-limited blocklist (#340): a
+	-- number heating up in one region must not push numbers off another
+	-- region's top-N. Decoding/ranking uses the same constant decay factor
+	-- across rows for a given DIAL.
+	HEAT DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	-- Projected SPAM_EVIDENCE EMA scoped to one DIAL (#342). The decay-aware
+	-- analogue of the old per-region VOTES counter — drives the per-region
+	-- visibility filter so the dial-aware blocklist composition uses the same
+	-- semantic as the global view.
+	SPAM_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
 	CONSTRAINT NUMBERS_LOCALE_PK PRIMARY KEY (PHONE,DIAL)
 );
+-- (DIAL, HEAT DESC): equality column first so the top-N scan is a single
+-- index seek per dial, then ordered range scan within that slice. The
+-- reverse order would force a full-index scan in a sparse DIAL.
+CREATE INDEX NUMBERS_LOCALE_HEAT_IDX ON NUMBERS_LOCALE (DIAL, HEAT DESC);
 
-CREATE TABLE REVISION (
-	ID INTEGER GENERATED ALWAYS AS IDENTITY,
-	CREATED BIGINT NOT NULL,
-	CONSTRAINT REVISION_PK PRIMARY KEY (ID)
-);
-
-CREATE TABLE NUMBERS_HISTORY (
-	RMIN INTEGER NOT NULL,
-	RMAX INTEGER NOT NULL,
+-- Per-(number, day) activity ledger. One row per number per UTC day holding that
+-- day's search / call / vote increments, written directly on each event
+-- (DB.mergeActivity). DAY is the UTC epoch-day (floor(epochMillis / 86400000)).
+-- Replaces the snapshot-and-diff NUMBERS_HISTORY/REVISION model and the rotated
+-- SEARCHES_CURRENT/SEARCHES_BACKUP counters: per-day activity is stored, never
+-- reconstructed by differencing cumulative snapshots, so there is no baseline to
+-- preserve and retention is a single date-bound delete.
+-- EPOCH_DAY, not DAY: DAY is a reserved keyword in H2 2.4.
+CREATE TABLE NUMBER_ACTIVITY (
 	PHONE CHARACTER VARYING(100) NOT NULL,
-	ACTIVE BOOLEAN DEFAULT TRUE NOT NULL,
+	EPOCH_DAY INTEGER NOT NULL,
+	SEARCHES INTEGER DEFAULT 0 NOT NULL,
 	CALLS INTEGER DEFAULT 0 NOT NULL,
 	VOTES INTEGER DEFAULT 0 NOT NULL,
-	DOWN_VOTES INTEGER DEFAULT 0 NOT NULL,
-	UP_VOTES INTEGER DEFAULT 0 NOT NULL,
-	LEGITIMATE INTEGER DEFAULT 0 NOT NULL,
-	PING INTEGER DEFAULT 0 NOT NULL,
-	POLL INTEGER DEFAULT 0 NOT NULL,
-	ADVERTISING INTEGER DEFAULT 0 NOT NULL,
-	GAMBLE INTEGER DEFAULT 0 NOT NULL,
-	FRAUD INTEGER DEFAULT 0 NOT NULL,
-	SEARCHES INTEGER DEFAULT 0 NOT NULL,
-	CONSTRAINT NUMBERS_HISTORY_PK PRIMARY KEY (RMAX,PHONE)
+	CONSTRAINT NUMBER_ACTIVITY_PK PRIMARY KEY (PHONE, EPOCH_DAY)
 );
+
+-- (EPOCH_DAY, PHONE): the global activity chart and the top-searches list aggregate
+-- by day over a recent window — the day-leading index makes those an ordered range
+-- scan. The PHONE primary key serves the per-number history read.
+CREATE INDEX NUMBER_ACTIVITY_DAY_IDX ON NUMBER_ACTIVITY (EPOCH_DAY, PHONE);
 
 CREATE TABLE NUMBERS_AGGREGATION_10 (
 	PREFIX CHARACTER VARYING(100) NOT NULL,
+	-- Current spam member count of the /10 block (#300 follow-up). A row exists only for a
+	-- qualifying block (CNT >= MIN_AGGREGATE_10).
 	CNT INTEGER NOT NULL,
-	VOTES INTEGER NOT NULL,
+	SHA1 BINARY VARYING(20),
+	-- Block-level confidence-model EMAs (#337). Projected representation, see migration 27.
+	HEAT DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	SPAM_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	LEGIT_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
 	CONSTRAINT NUMBERS_AGGREGATION_10_PK PRIMARY KEY (PREFIX)
 );
 
+CREATE INDEX AGG10_SHA1_IDX ON NUMBERS_AGGREGATION_10 (SHA1, CNT, PREFIX);
+
 CREATE TABLE NUMBERS_AGGREGATION_100 (
 	PREFIX CHARACTER VARYING(100) NOT NULL,
+	-- Mirrors MEMBERS so a present row (CNT > 0) means the /100 qualifies (#300 follow-up).
 	CNT INTEGER NOT NULL,
-	VOTES INTEGER NOT NULL,
+	SHA1 BINARY VARYING(20),
+	HEAT DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	SPAM_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	LEGIT_EVIDENCE DOUBLE PRECISION DEFAULT 0 NOT NULL,
+	-- Spread×mass block-spam gate (#300 follow-up): MEMBERS = total currently-spam numbers in the
+	-- /100; TENS = its /10 sub-blocks with >= SPREAD_TEN_CONTRIB such numbers. A /100 is a spam
+	-- block when MEMBERS >= SPREAD_MIN_NUMBERS and TENS >= SPREAD_MIN_TENS.
+	MEMBERS INTEGER DEFAULT 0 NOT NULL,
+	TENS INTEGER DEFAULT 0 NOT NULL,
 	CONSTRAINT NUMBERS_AGGREGATION_100_PK PRIMARY KEY (PREFIX)
 );
 
-CREATE TABLE OLDREPORTS (
-	PHONE VARCHAR(100) NOT NULL,
-	VOTES INTEGER DEFAULT 1 NOT NULL,
-	LASTUPDATE BIGINT NOT NULL,
-	DATEADDED BIGINT DEFAULT 0 NOT NULL,
-
-	CONSTRAINT OLDREPORTS_PK PRIMARY KEY (PHONE)
-);
+CREATE INDEX AGG100_SHA1_IDX ON NUMBERS_AGGREGATION_100 (SHA1, CNT, PREFIX);
 
 CREATE TABLE WHITELIST (
 	PHONE CHARACTER VARYING(100) NOT NULL,
@@ -130,7 +185,7 @@ CREATE TABLE USERS (
 
 	LOGIN CHARACTER VARYING(255) NOT NULL,
 	PWHASH BINARY VARYING(128) NOT NULL,
-	
+
 	CLIENTNAME CHARACTER VARYING(64) NULL,
 	EXTID CHARACTER VARYING(64) NULL,
 	GOOGLEID CHARACTER VARYING(64) NULL,
@@ -151,6 +206,10 @@ CREATE TABLE USERS (
 	WELCOME BOOLEAN DEFAULT FALSE NOT NULL,
 
 	CREDIT INTEGER DEFAULT 0 NOT NULL,
+
+	FLAG_DAY INTEGER DEFAULT 0 NOT NULL,
+	FLAG_COUNT INTEGER DEFAULT 0 NOT NULL,
+
 	CONSTRAINT USERS_PK PRIMARY KEY (ID)
 );
 
@@ -186,6 +245,8 @@ CREATE TABLE TOKENS (
 	ACCESS_CARDDAV BOOLEAN DEFAULT false NOT NULL,
 	ACCESS_RATE BOOLEAN DEFAULT false NOT NULL,
 	ACCESS_LOGIN BOOLEAN DEFAULT false NOT NULL,
+	ACCESS_DIAGNOSTICS BOOLEAN DEFAULT false NOT NULL,
+	ACCESS_ADMIN BOOLEAN DEFAULT false NOT NULL,
 	LASTACCESS BIGINT DEFAULT 0 NOT NULL,
 	USERAGENT CHARACTER VARYING(512) NOT NULL,
 	CONSTRAINT TOKENS_PK PRIMARY KEY (ID)
@@ -197,11 +258,17 @@ CREATE INDEX TOKENS_USERID_IDX ON TOKENS (USERID,IMPLICIT DESC,LASTACCESS DESC,I
 CREATE TABLE PERSONALIZATION (
 	USERID BIGINT NOT NULL,
 	PHONE CHARACTER VARYING(100) NOT NULL,
+	SHA1 BINARY(20),
 	BLOCKED BOOLEAN DEFAULT true NOT NULL,
+	WILDCARD BOOLEAN DEFAULT false NOT NULL,
+	CREATED BIGINT DEFAULT 0 NOT NULL,
+	LAST_ACTIVITY BIGINT DEFAULT 0 NOT NULL,
 	CONSTRAINT PERSONALIZATION_PK PRIMARY KEY (USERID,PHONE)
 );
 
 CREATE INDEX PERSONALIZATION_USERID_IDX ON PERSONALIZATION (USERID,BLOCKED DESC,PHONE);
+CREATE INDEX PERSONALIZATION_HASH_IDX ON PERSONALIZATION (USERID, SHA1);
+CREATE INDEX PERSONALIZATION_WILDCARD_IDX ON PERSONALIZATION (USERID, WILDCARD, PHONE);
 
 CREATE TABLE ANSWERBOT_SIP (
 	ID BIGINT NOT NULL AUTO_INCREMENT,
@@ -223,11 +290,16 @@ CREATE TABLE ANSWERBOT_SIP (
 	TALK_TIME BIGINT DEFAULT 0 NOT NULL,
 	MIN_VOTES INTEGER DEFAULT 4 NOT NULL,
 	WILDCARDS BOOLEAN DEFAULT true NOT NULL,
+	ACCEPT_LOCAL BOOLEAN DEFAULT TRUE NOT NULL,
+	RETENTION_PERIOD VARCHAR(10) DEFAULT 'NEVER',
 	CONSTRAINT ANSWERBOT_SIP_PK PRIMARY KEY (ID),
 	CONSTRAINT ANSWERBOT_SIP_UN UNIQUE (USERNAME),
 	CONSTRAINT ANSWERBOT_SIP_FK FOREIGN KEY (USERID) REFERENCES USERS(ID) ON DELETE CASCADE ON UPDATE RESTRICT
 );
 
+-- Create index for efficient retention cleanup queries
+CREATE INDEX ANSWERBOT_RETENTION_IDX
+ON ANSWERBOT_SIP (RETENTION_PERIOD);
 
 CREATE TABLE ANSWERBOT_CALLS (
 	ID BIGINT NOT NULL AUTO_INCREMENT,
@@ -237,6 +309,10 @@ CREATE TABLE ANSWERBOT_CALLS (
 	DURATION BIGINT NOT NULL,
 	CONSTRAINT ANSWERBOT_CALLS_FK FOREIGN KEY (ABID) REFERENCES ANSWERBOT_SIP(ID) ON DELETE CASCADE ON UPDATE RESTRICT
 );
+
+-- Create index for efficient call cleanup by timestamp
+CREATE INDEX ANSWERBOT_CALLS_STARTED_IDX
+ON ANSWERBOT_CALLS (ABID, STARTED);
 
 
 CREATE TABLE ANSWERBOT_DYNDNS (
@@ -254,43 +330,6 @@ CREATE TABLE ANSWERBOT_DYNDNS (
 );
 
 
-CREATE TABLE CALLREPORT (
-	USERID BIGINT NOT NULL,
-	LASTID CHARACTER VARYING(64) NOT NULL,
-	"TIMESTAMP" CHARACTER VARYING(64) NOT NULL,
-	LASTACCESS BIGINT NOT NULL,
-
-	CONSTRAINT CALLREPORT_PK PRIMARY KEY (USERID)
-);
-
-CREATE TABLE CALLERS (
-	USERID BIGINT NOT NULL,
-	PHONE CHARACTER VARYING(100) NOT NULL,
-	CALLS INTEGER DEFAULT 0 NOT NULL,
-	LASTUPDATE BIGINT NOT NULL,
-
-	CONSTRAINT CALLERS_PK PRIMARY KEY (USERID,PHONE)
-);
-
-CREATE TABLE RATINGS (
-	PHONE CHARACTER VARYING(100) NOT NULL,
-	RATING CHARACTER VARYING(15) NOT NULL,
-	COUNT INTEGER DEFAULT 0 NOT NULL,
-	LASTUPDATE BIGINT DEFAULT 0 NOT NULL,
-	BACKUP INTEGER DEFAULT 0 NOT NULL,
-	
-	CONSTRAINT RATINGS_PK PRIMARY KEY (PHONE,RATING)
-);
-
-CREATE TABLE RATINGHISTORY (
-	REV INTEGER NOT NULL,
-	PHONE CHARACTER VARYING(100) NOT NULL,
-	RATING CHARACTER VARYING(15) NOT NULL,
-	COUNT INTEGER DEFAULT 1 NOT NULL,
-
-	CONSTRAINT RATINGHISTORY_PK PRIMARY KEY (REV,PHONE,RATING)
-);
-
 CREATE TABLE COMMENTS (
 	ID VARCHAR(64) NOT NULL,
 
@@ -303,26 +342,13 @@ CREATE TABLE COMMENTS (
 	DOWN INTEGER DEFAULT 0 NOT NULL,
 	USERID BIGINT,
 	LOCALE CHARACTER VARYING(16) DEFAULT 'de' NOT NULL,
+	CLASSIFICATION TINYINT DEFAULT 0 NOT NULL,
 
 	CONSTRAINT COMMENTS_PK PRIMARY KEY (ID)
 );
 CREATE INDEX COMMENTS_PHONE_IDX ON COMMENTS (PHONE,CREATED);
-
-CREATE TABLE SEARCHES (
-	PHONE CHARACTER VARYING(100) NOT NULL,
-	COUNT INTEGER DEFAULT 1 NOT NULL,
-	LASTUPDATE BIGINT NOT NULL,
-	BACKUP INTEGER DEFAULT 0 NOT NULL,
-
-	CONSTRAINT SEARCHES_PK PRIMARY KEY (PHONE)
-);
-
-CREATE TABLE SUMMARY_REQUEST (
-	PHONE CHARACTER VARYING(100) NOT NULL,
-	PRIORITY INTEGER NOT NULL AUTO_INCREMENT,
-	CONSTRAINT SUMMARY_REQUEST_PK PRIMARY KEY (PHONE)
-);
-CREATE INDEX SUMMARY_REQUEST_PRIORITY_IDX ON SUMMARY_REQUEST (PRIORITY);
+CREATE INDEX COMMENTS_USER_PHONE_IDX ON COMMENTS (USERID, PHONE);
+CREATE INDEX COMMENTS_PHONE_CLASSIFICATION_IDX ON COMMENTS (PHONE, CLASSIFICATION);
 
 CREATE TABLE SUMMARY (
 	PHONE CHARACTER VARYING(100) NOT NULL,
@@ -331,12 +357,210 @@ CREATE TABLE SUMMARY (
 	CONSTRAINT SUMMARY_PK PRIMARY KEY (PHONE)
 );
 
-CREATE TABLE DOMAIN_CHECK (
-	DOMAIN_NAME CHARACTER VARYING(255) NOT NULL,
-	DISPOSABLE BOOLEAN NOT NULL,
-	LAST_CHANGED BIGINT NOT NULL,
-	SOURCE_SYSTEM INTEGER NOT NULL,
-	MX_HOST CHARACTER VARYING(255),
-	MX_IP CHARACTER VARYING(255),
-	CONSTRAINT DOMAIN_CHECK_PK PRIMARY KEY (DOMAIN_NAME)
+CREATE TABLE FTC_SUBJECTS (
+    ID       INTEGER GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    LABEL    CHARACTER VARYING(100) NOT NULL UNIQUE,
+    RATING   CHARACTER VARYING(20)
 );
+
+CREATE TABLE FTC_REPORTS (
+    PHONE          CHARACTER VARYING(20) NOT NULL,
+    SUBJECT_ID     INTEGER NOT NULL,
+    VOTES          INTEGER NOT NULL DEFAULT 0,
+    CONSTRAINT FTC_REPORTS_PK PRIMARY KEY (PHONE, SUBJECT_ID),
+    CONSTRAINT FTC_REPORTS_SUBJECT_FK FOREIGN KEY (SUBJECT_ID) REFERENCES FTC_SUBJECTS (ID)
+);
+
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Calls pretending to be government, businesses, or family and friends', 'G_FRAUD');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Charities', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Computer  & technical support', 'G_FRAUD');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Dropped call or no message', 'C_PING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Energy, solar,  & utilities', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Home improvement  & cleaning', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Home security  & alarms', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Lotteries, prizes  & sweepstakes', 'F_GAMBLE');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Medical  & prescriptions', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('No Subject Provided', NULL);
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Other', NULL);
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Reducing your debt (credit cards, mortgage, student loans)', 'G_FRAUD');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Vacation  & timeshares', 'E_ADVERTISING');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Warranties  & protection plans', 'G_FRAUD');
+INSERT INTO FTC_SUBJECTS (LABEL, RATING) VALUES ('Work from home  & other ways to make money', 'G_FRAUD');
+
+
+-- Diagnostics framework (docs/plans/2026-07-11-diagnostics-framework-design.md):
+-- see db-migration-46.sql for the rationale of each table.
+CREATE TABLE DIAG_SIGNATURE (
+	SIG_ID CHARACTER(40) NOT NULL,
+	SOURCE CHARACTER VARYING(32) NOT NULL,
+	SIGNATURE CHARACTER VARYING(1024) NOT NULL,
+	TAG CHARACTER VARYING(64) DEFAULT '' NOT NULL,
+	CATEGORY CHARACTER VARYING(64),
+	SAMPLE_MESSAGE CHARACTER VARYING(1024) DEFAULT '' NOT NULL,
+	FIRST_SEEN BIGINT DEFAULT 0 NOT NULL,
+	LAST_SEEN BIGINT DEFAULT 0 NOT NULL,
+	TOTAL_EVENTS BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_SIGNATURE_PK PRIMARY KEY (SIG_ID)
+);
+
+CREATE INDEX DIAG_SIGNATURE_SOURCE_IDX ON DIAG_SIGNATURE (SOURCE, CATEGORY);
+
+CREATE TABLE DIAG_ORIGIN_SIGNATURE (
+	SIG_ID CHARACTER(40) NOT NULL,
+	SOURCE CHARACTER VARYING(32) NOT NULL,
+	ORIGIN_ID CHARACTER VARYING(128) NOT NULL,
+	USER_ID CHARACTER VARYING(64),
+	FIRST_SEEN BIGINT DEFAULT 0 NOT NULL,
+	LAST_SEEN BIGINT DEFAULT 0 NOT NULL,
+	EVENT_COUNT BIGINT DEFAULT 0 NOT NULL,
+	DISTINCT_DAYS INTEGER DEFAULT 0 NOT NULL,
+	LAST_DAY INTEGER DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_ORIGIN_SIGNATURE_PK PRIMARY KEY (SIG_ID, ORIGIN_ID)
+);
+
+CREATE INDEX DIAG_ORIGIN_SIGNATURE_ORIGIN_IDX ON DIAG_ORIGIN_SIGNATURE (SOURCE, ORIGIN_ID);
+
+CREATE TABLE DIAG_SAMPLE (
+	ID BIGINT NOT NULL AUTO_INCREMENT,
+	RECEIVED_MS BIGINT DEFAULT 0 NOT NULL,
+	SOURCE CHARACTER VARYING(32) NOT NULL,
+	SIG_ID CHARACTER(40) NOT NULL,
+	ORIGIN_ID CHARACTER VARYING(128) DEFAULT '' NOT NULL,
+	USER_ID CHARACTER VARYING(64),
+	SEVERITY CHARACTER(1) DEFAULT 'E' NOT NULL,
+	UPTIME_S BIGINT,
+	TAG CHARACTER VARYING(64) DEFAULT '' NOT NULL,
+	MESSAGE_SCRUBBED CHARACTER VARYING(1024) DEFAULT '' NOT NULL,
+	CONSTRAINT DIAG_SAMPLE_PK PRIMARY KEY (ID)
+);
+
+CREATE INDEX DIAG_SAMPLE_SIG_IDX ON DIAG_SAMPLE (SIG_ID);
+CREATE INDEX DIAG_SAMPLE_RECEIVED_IDX ON DIAG_SAMPLE (RECEIVED_MS);
+
+CREATE TABLE DIAG_INGEST_CURSOR (
+	STREAM_ID CHARACTER VARYING(64) NOT NULL,
+	SEGMENT_COUNT BIGINT DEFAULT 0 NOT NULL,
+	BYTE_OFFSET BIGINT DEFAULT 0 NOT NULL,
+	LAST_LINE_TS BIGINT DEFAULT 0 NOT NULL,
+	UPDATED BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_INGEST_CURSOR_PK PRIMARY KEY (STREAM_ID)
+);
+
+-- Diagnostics rule engine + notification ledger; see db-migration-47.sql.
+CREATE TABLE DIAG_RULE (
+	ID BIGINT NOT NULL AUTO_INCREMENT,
+	NAME CHARACTER VARYING(128) DEFAULT '' NOT NULL,
+	SOURCE CHARACTER VARYING(32),
+	MATCH_TAG CHARACTER VARYING(64),
+	MATCH_REGEX CHARACTER VARYING(512) NOT NULL,
+	CATEGORY CHARACTER VARYING(64) DEFAULT '' NOT NULL,
+	ACTOR CHARACTER VARYING(8) DEFAULT 'NONE' NOT NULL,
+	MIN_DISTINCT_DAYS INTEGER DEFAULT 1 NOT NULL,
+	MIN_EVENTS INTEGER DEFAULT 1 NOT NULL,
+	TEMPLATE_KEY CHARACTER VARYING(64),
+	STATE CHARACTER VARYING(8) DEFAULT 'DRAFT' NOT NULL,
+	AUTHOR CHARACTER VARYING(64) DEFAULT '' NOT NULL,
+	NOTES CHARACTER VARYING(1024) DEFAULT '' NOT NULL,
+	CREATED BIGINT DEFAULT 0 NOT NULL,
+	UPDATED BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_RULE_PK PRIMARY KEY (ID)
+);
+
+CREATE INDEX DIAG_RULE_STATE_IDX ON DIAG_RULE (STATE);
+
+CREATE TABLE DIAG_TEMPLATE (
+	ID BIGINT NOT NULL AUTO_INCREMENT,
+	TEMPLATE_KEY CHARACTER VARYING(64) NOT NULL,
+	LANG CHARACTER VARYING(8) DEFAULT 'de' NOT NULL,
+	SUBJECT CHARACTER VARYING(256) DEFAULT '' NOT NULL,
+	BODY CHARACTER VARYING(8192) DEFAULT '' NOT NULL,
+	UPDATED BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_TEMPLATE_PK PRIMARY KEY (ID),
+	CONSTRAINT DIAG_TEMPLATE_KEY_UQ UNIQUE (TEMPLATE_KEY, LANG)
+);
+
+CREATE TABLE DIAG_NOTIFICATION (
+	ID BIGINT NOT NULL AUTO_INCREMENT,
+	SOURCE CHARACTER VARYING(32) NOT NULL,
+	ORIGIN_ID CHARACTER VARYING(128) NOT NULL,
+	USER_ID CHARACTER VARYING(64),
+	RULE_ID BIGINT NOT NULL,
+	STATE CHARACTER VARYING(12) DEFAULT 'PENDING' NOT NULL,
+	DRY_RUN BOOLEAN DEFAULT FALSE NOT NULL,
+	FIRST_MATCHED BIGINT DEFAULT 0 NOT NULL,
+	SENT_AT BIGINT,
+	CLEARED_AT BIGINT,
+	CONSTRAINT DIAG_NOTIFICATION_PK PRIMARY KEY (ID)
+);
+
+CREATE INDEX DIAG_NOTIFICATION_LATCH_IDX ON DIAG_NOTIFICATION (RULE_ID, ORIGIN_ID, STATE);
+CREATE INDEX DIAG_NOTIFICATION_SENT_IDX ON DIAG_NOTIFICATION (STATE, SENT_AT);
+
+-- Hot-editable anonymizer rules, layered on top of the built-in Scrubber
+-- baseline; see db-migration-52.sql. Three signature-collapse rules are seeded
+-- LIVE below (kept in sync with that migration).
+CREATE TABLE DIAG_SCRUB_RULE (
+	ID BIGINT NOT NULL AUTO_INCREMENT,
+	NAME CHARACTER VARYING(128) DEFAULT '' NOT NULL,
+	SOURCE CHARACTER VARYING(32),
+	PATTERN CHARACTER VARYING(512) NOT NULL,
+	REPLACEMENT CHARACTER VARYING(128) DEFAULT '' NOT NULL,
+	APPLIES_TO CHARACTER VARYING(10) DEFAULT 'BOTH' NOT NULL,
+	STATE CHARACTER VARYING(8) DEFAULT 'DRAFT' NOT NULL,
+	VERSION INTEGER DEFAULT 1 NOT NULL,
+	AUTHOR CHARACTER VARYING(64) DEFAULT '' NOT NULL,
+	UPDATED BIGINT DEFAULT 0 NOT NULL,
+	CONSTRAINT DIAG_SCRUB_RULE_PK PRIMARY KEY (ID)
+);
+
+CREATE INDEX DIAG_SCRUB_RULE_STATE_IDX ON DIAG_SCRUB_RULE (STATE);
+
+-- Seeded signature-collapse rules (kept in sync with db-migration-52.sql).
+INSERT INTO DIAG_SCRUB_RULE (NAME, SOURCE, PATTERN, REPLACEMENT, APPLIES_TO, STATE) VALUES ('diag-dyndns-host', 'SERVER', '(wrong password \(\d+ characters\): ).*', '$1<DYNDNS-HOST>', 'SIGNATURE', 'LIVE');
+INSERT INTO DIAG_SCRUB_RULE (NAME, SOURCE, PATTERN, REPLACEMENT, APPLIES_TO, STATE) VALUES ('diag-addressbook-path', 'SERVER', '(/phoneblock/contacts/addresses/)[^/]+/[^''\s]*', '$1<BOOK>/<CARD>', 'BOTH', 'LIVE');
+INSERT INTO DIAG_SCRUB_RULE (NAME, SOURCE, PATTERN, REPLACEMENT, APPLIES_TO, STATE) VALUES ('diag-address-card', 'SERVER', '(Prevent deleting card: ).*', '$1<CARD>', 'BOTH', 'LIVE');
+
+INSERT INTO DIAG_TEMPLATE (TEMPLATE_KEY, LANG, SUBJECT, BODY, UPDATED) VALUES
+	('help-register-rejected', 'de',
+	 'Dein PhoneBlock-Dongle kann sich nicht anmelden',
+	 '<p>Hallo,</p><p>dein PhoneBlock-Dongle (Geraet {deviceId}) versucht seit mehreren Tagen vergeblich, sich bei deiner Fritz!Box anzumelden - die Anmeldung (SIP REGISTER) wird abgelehnt.</p><p>Bitte pruefe in der Fritz!Box unter "Telefonie / Telefoniegeraete" den Benutzernamen und die Nebenstelle des IP-Telefons, das du fuer PhoneBlock eingerichtet hast.</p><p>Viele Gruesse<br/>Dein PhoneBlock-Team</p>',
+	 0);
+
+INSERT INTO DIAG_RULE (NAME, SOURCE, MATCH_TAG, MATCH_REGEX, CATEGORY, ACTOR, MIN_DISTINCT_DAYS, MIN_EVENTS, TEMPLATE_KEY, STATE, AUTHOR, NOTES, CREATED, UPDATED) VALUES
+	('SIP registration rejected', 'DONGLE', 'sip', 'REGISTER rejected', 'user-install-sip', 'USER', 2, 5, 'help-register-rejected', 'SHADOW', 'seed', 'Wrong SIP user / extension in the Fritz!Box.', 0, 0),
+	('rate API rejects submissions', 'DONGLE', 'api', 'rate: HTTP', 'firmware-bug', 'DEV', 1, 10, NULL, 'SHADOW', 'seed', 'See issue #469 (wildcards / non-E.164 to /api/rate).', 0, 0),
+	('WiFi transient disconnects', 'DONGLE', 'wifi', 'disconnected', 'environmental', 'NONE', 1, 1, NULL, 'SHADOW', 'seed', 'Noisy RF/environment; classify only.', 0, 0);
+
+INSERT INTO DIAG_TEMPLATE (TEMPLATE_KEY, LANG, SUBJECT, BODY, UPDATED) VALUES
+	('help-internet-exposed', 'de',
+	 'Sicherheitshinweis: Dein PhoneBlock-Dongle ist aus dem Internet erreichbar',
+	 '<p>Hallo,</p><p>wir haben festgestellt, dass die Weboberflaeche deines PhoneBlock-Dongles (Geraet {deviceId}) aus dem Internet erreichbar ist: Das Geraet erhaelt automatisierte Anfragen von Schwachstellen-Scannern aus dem Netz.</p><p><strong>Das ist ein Sicherheitsrisiko.</strong> Der Dongle ist fuer den Betrieb im Heimnetz gedacht und muss nicht aus dem Internet erreichbar sein.</p><p>Bitte pruefe die Einstellungen deines Routers (z. B. Fritz!Box) und entferne eine eventuell eingerichtete Portfreigabe bzw. "Exposed Host"/DMZ-Regel, die auf den Dongle zeigt.</p><p>Viele Gruesse<br/>Dein PhoneBlock-Team</p>',
+	 0);
+
+INSERT INTO DIAG_RULE (NAME, SOURCE, MATCH_TAG, MATCH_REGEX, CATEGORY, ACTOR, MIN_DISTINCT_DAYS, MIN_EVENTS, TEMPLATE_KEY, STATE, AUTHOR, NOTES, CREATED, UPDATED) VALUES
+	('Dongle web UI internet-exposed', 'DONGLE', NULL, 'parse_block|Bad request syntax|Method Not Allowed|not allowed for URI', 'security-exposed', 'USER', 1, 1, 'help-internet-exposed', 'SHADOW', 'seed', 'Embedded HTTP server receiving scanner garbage -> reachable from the internet. Fires on first detection.', 0, 0);
+
+INSERT INTO DIAG_TEMPLATE (TEMPLATE_KEY, LANG, SUBJECT, BODY, UPDATED) VALUES
+	('help-device-silent', 'de',
+	 'Meldet sich dein PhoneBlock-Dongle noch?',
+	 '<p>Hallo,</p><p>dein PhoneBlock-Dongle (Geraet {deviceId}) hat sich seit mehreren Tagen nicht mehr bei PhoneBlock gemeldet.</p><p>Falls du das Geraet bewusst ausser Betrieb genommen hast, kannst du diese Nachricht ignorieren.</p><p>Andernfalls pruefe bitte, ob der Dongle mit Strom versorgt und mit deinem Heimnetz (WLAN/LAN) verbunden ist.</p><p>Viele Gruesse<br/>Dein PhoneBlock-Team</p>',
+	 0);
+
+INSERT INTO DIAG_RULE (NAME, SOURCE, MATCH_TAG, MATCH_REGEX, CATEGORY, ACTOR, MIN_DISTINCT_DAYS, MIN_EVENTS, TEMPLATE_KEY, STATE, AUTHOR, NOTES, CREATED, UPDATED) VALUES
+	('Dongle silent (no contact)', 'DONGLE-LIVENESS', NULL, '(?!)', 'device-silent', 'USER', 1, 1, 'help-device-silent', 'SHADOW', 'seed', 'Heartbeat gap: no token use for several days. Detected by DongleSilenceDetector, not the signature matcher.', 0, 0);
+
+-- English versions of the help-mail templates (see db-migration-51.sql).
+INSERT INTO DIAG_TEMPLATE (TEMPLATE_KEY, LANG, SUBJECT, BODY, UPDATED) VALUES
+	('help-register-rejected', 'en',
+	 'Your PhoneBlock dongle cannot register',
+	 '<p>Hello,</p><p>your PhoneBlock dongle (device {deviceId}) has been trying to register with your Fritz!Box for several days without success - the registration (SIP REGISTER) is being rejected.</p><p>Please check the user name and the extension of the IP phone you set up for PhoneBlock, in your Fritz!Box under "Telephony / Telephony devices".</p><p>Best regards,<br/>Your PhoneBlock team</p>',
+	 0),
+	('help-internet-exposed', 'en',
+	 'Security notice: your PhoneBlock dongle is reachable from the internet',
+	 '<p>Hello,</p><p>we have detected that the web interface of your PhoneBlock dongle (device {deviceId}) is reachable from the internet: the device is receiving automated requests from vulnerability scanners.</p><p><strong>This is a security risk.</strong> The dongle is meant to run on your home network and does not need to be reachable from the internet.</p><p>Please check your router settings (e.g. Fritz!Box) and remove any port forwarding or "Exposed Host"/DMZ rule that points to the dongle.</p><p>Best regards,<br/>Your PhoneBlock team</p>',
+	 0),
+	('help-device-silent', 'en',
+	 'Is your PhoneBlock dongle still there?',
+	 '<p>Hello,</p><p>your PhoneBlock dongle (device {deviceId}) has not contacted PhoneBlock for several days.</p><p>If you have intentionally taken the device out of service, you can ignore this message.</p><p>Otherwise, please check that the dongle has power and is connected to your home network (Wi-Fi/LAN).</p><p>Best regards,<br/>Your PhoneBlock team</p>',
+	 0);
+

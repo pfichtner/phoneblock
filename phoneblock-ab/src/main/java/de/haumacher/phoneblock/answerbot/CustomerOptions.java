@@ -28,18 +28,31 @@ public interface CustomerOptions extends RegistrationOptions, UserOptions {
 		return new NameAddress(new SipURI(getSipUser(),getProxy()));
 	}
 
-	/** 
-	 * The minimum PhoneBlock votes to consider a call as SPAM and accept it. 
+	/**
+	 * The minimum PhoneBlock votes to consider a call as SPAM and accept it.
+	 * 
+	 * <p>
+	 * <code>null</code> if not configured locally. The answerbot then uses the
+	 * "Mindest-Konfidenz" from the owner's PhoneBlock account settings.
+	 * </p>
 	 */
-	int getMinVotes();
+	Integer getMinVotes();
 	
-	/** 
-	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected. 
+	/**
+	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected.
+	 * 
+	 * <p>
+	 * <code>null</code> if not configured locally. The answerbot then uses the
+	 * wildcard setting from the owner's PhoneBlock account settings.
+	 * </p>
 	 */
-	boolean getWildcard();
+	Boolean getWildcard();
 	
-	/** 
+	/**
 	 * Whether to accept anonymous calls.
 	 */
 	boolean getAcceptAnonymous();
+
+	/** Whether to accept calls from local phones (numbers starting with *). */
+	boolean getAcceptLocal();
 }

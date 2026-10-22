@@ -33,6 +33,9 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	/** @see #isWildcards() */
 	public static final String WILDCARDS__PROP = "wildcards";
 
+	/** @see #isAcceptLocal() */
+	public static final String ACCEPT_LOCAL__PROP = "acceptLocal";
+
 	/** @see #isRegistered() */
 	public static final String REGISTERED__PROP = "registered";
 
@@ -75,6 +78,9 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	/** @see #getDyndnsPassword() */
 	public static final String DYNDNS_PASSWORD__PROP = "dyndnsPassword";
 
+	/** @see #getRetentionPeriod() */
+	public static final String RETENTION_PERIOD__PROP = "retentionPeriod";
+
 	private long _id = 0L;
 
 	private long _userId = 0L;
@@ -86,6 +92,8 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	private int _minVotes = 0;
 
 	private boolean _wildcards = false;
+
+	private boolean _acceptLocal = false;
 
 	private boolean _registered = false;
 
@@ -114,6 +122,8 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	private String _dyndnsUser = null;
 
 	private String _dyndnsPassword = null;
+
+	private de.haumacher.phoneblock.ab.proto.RetentionPeriod _retentionPeriod = de.haumacher.phoneblock.ab.proto.RetentionPeriod.NEVER;
 
 	/**
 	 * Creates a {@link AnswerbotInfo} instance.
@@ -242,6 +252,26 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 	/** Internal setter for {@link #isWildcards()} without chain call utility. */
 	protected final void internalSetWildcards(boolean value) {
 		_wildcards = value;
+	}
+
+	/**
+	 * Whether to accept calls from local phones (numbers starting with *).
+	 */
+	public final boolean isAcceptLocal() {
+		return _acceptLocal;
+	}
+
+	/**
+	 * @see #isAcceptLocal()
+	 */
+	public de.haumacher.phoneblock.ab.proto.AnswerbotInfo setAcceptLocal(boolean value) {
+		internalSetAcceptLocal(value);
+		return this;
+	}
+
+	/** Internal setter for {@link #isAcceptLocal()} without chain call utility. */
+	protected final void internalSetAcceptLocal(boolean value) {
+		_acceptLocal = value;
 	}
 
 	/**
@@ -566,19 +596,42 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 			return _dyndnsPassword != null;
 		}
 
+		/**
+		 * The retention period for automatic call cleanup (NEVER, WEEK, MONTH, QUARTER, YEAR).
+		 */
+		public final de.haumacher.phoneblock.ab.proto.RetentionPeriod getRetentionPeriod() {
+			return _retentionPeriod;
+		}
+
+		/**
+		 * @see #getRetentionPeriod()
+		 */
+		public de.haumacher.phoneblock.ab.proto.AnswerbotInfo setRetentionPeriod(de.haumacher.phoneblock.ab.proto.RetentionPeriod value) {
+			internalSetRetentionPeriod(value);
+			return this;
+		}
+
+		/** Internal setter for {@link #getRetentionPeriod()} without chain call utility. */
+		protected final void internalSetRetentionPeriod(de.haumacher.phoneblock.ab.proto.RetentionPeriod value) {
+			if (value == null) throw new IllegalArgumentException("Property 'retentionPeriod' cannot be null.");
+			_retentionPeriod = value;
+		}
+
 		@Override
 		public String jsonType() {
 			return ANSWERBOT_INFO__TYPE;
 		}
 
-		private static java.util.List<String> PROPERTIES = java.util.Collections.unmodifiableList(
-			java.util.Arrays.asList(
+		static final java.util.List<String> PROPERTIES;
+		static {
+			java.util.List<String> local = java.util.Arrays.asList(
 				ID__PROP, 
 				USER_ID__PROP, 
 				ENABLED__PROP, 
 				PREFER_IPV_4__PROP, 
 				MIN_VOTES__PROP, 
 				WILDCARDS__PROP, 
+				ACCEPT_LOCAL__PROP, 
 				REGISTERED__PROP, 
 				REGISTER_MSG__PROP, 
 				NEW_CALLS__PROP, 
@@ -592,11 +645,27 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				IP_4__PROP, 
 				IP_6__PROP, 
 				DYNDNS_USER__PROP, 
-				DYNDNS_PASSWORD__PROP));
+				DYNDNS_PASSWORD__PROP, 
+				RETENTION_PERIOD__PROP);
+			PROPERTIES = java.util.Collections.unmodifiableList(local);
+		}
+
+		static final java.util.Set<String> TRANSIENT_PROPERTIES;
+		static {
+			java.util.HashSet<String> tmp = new java.util.HashSet<>();
+			tmp.addAll(java.util.Arrays.asList(
+					));
+			TRANSIENT_PROPERTIES = java.util.Collections.unmodifiableSet(tmp);
+		}
 
 		@Override
 		public java.util.List<String> properties() {
 			return PROPERTIES;
+		}
+
+		@Override
+		public java.util.Set<String> transientProperties() {
+			return TRANSIENT_PROPERTIES;
 		}
 
 		@Override
@@ -608,6 +677,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case PREFER_IPV_4__PROP: return isPreferIPv4();
 				case MIN_VOTES__PROP: return getMinVotes();
 				case WILDCARDS__PROP: return isWildcards();
+				case ACCEPT_LOCAL__PROP: return isAcceptLocal();
 				case REGISTERED__PROP: return isRegistered();
 				case REGISTER_MSG__PROP: return getRegisterMsg();
 				case NEW_CALLS__PROP: return getNewCalls();
@@ -622,6 +692,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case IP_6__PROP: return getIp6();
 				case DYNDNS_USER__PROP: return getDyndnsUser();
 				case DYNDNS_PASSWORD__PROP: return getDyndnsPassword();
+				case RETENTION_PERIOD__PROP: return getRetentionPeriod();
 				default: return null;
 			}
 		}
@@ -635,6 +706,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case PREFER_IPV_4__PROP: internalSetPreferIPv4((boolean) value); break;
 				case MIN_VOTES__PROP: internalSetMinVotes((int) value); break;
 				case WILDCARDS__PROP: internalSetWildcards((boolean) value); break;
+				case ACCEPT_LOCAL__PROP: internalSetAcceptLocal((boolean) value); break;
 				case REGISTERED__PROP: internalSetRegistered((boolean) value); break;
 				case REGISTER_MSG__PROP: internalSetRegisterMsg((String) value); break;
 				case NEW_CALLS__PROP: internalSetNewCalls((int) value); break;
@@ -649,6 +721,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case IP_6__PROP: internalSetIp6((String) value); break;
 				case DYNDNS_USER__PROP: internalSetDyndnsUser((String) value); break;
 				case DYNDNS_PASSWORD__PROP: internalSetDyndnsPassword((String) value); break;
+				case RETENTION_PERIOD__PROP: internalSetRetentionPeriod((de.haumacher.phoneblock.ab.proto.RetentionPeriod) value); break;
 			}
 		}
 
@@ -679,6 +752,8 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 			out.value(getMinVotes());
 			out.name(WILDCARDS__PROP);
 			out.value(isWildcards());
+			out.name(ACCEPT_LOCAL__PROP);
+			out.value(isAcceptLocal());
 			out.name(REGISTERED__PROP);
 			out.value(isRegistered());
 			if (hasRegisterMsg()) {
@@ -719,6 +794,8 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				out.name(DYNDNS_PASSWORD__PROP);
 				out.value(getDyndnsPassword());
 			}
+			out.name(RETENTION_PERIOD__PROP);
+			getRetentionPeriod().writeTo(out);
 		}
 
 		@Override
@@ -730,6 +807,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case PREFER_IPV_4__PROP: setPreferIPv4(in.nextBoolean()); break;
 				case MIN_VOTES__PROP: setMinVotes(in.nextInt()); break;
 				case WILDCARDS__PROP: setWildcards(in.nextBoolean()); break;
+				case ACCEPT_LOCAL__PROP: setAcceptLocal(in.nextBoolean()); break;
 				case REGISTERED__PROP: setRegistered(in.nextBoolean()); break;
 				case REGISTER_MSG__PROP: setRegisterMsg(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 				case NEW_CALLS__PROP: setNewCalls(in.nextInt()); break;
@@ -744,6 +822,7 @@ public class AnswerbotInfo extends de.haumacher.msgbuf.data.AbstractDataObject i
 				case IP_6__PROP: setIp6(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 				case DYNDNS_USER__PROP: setDyndnsUser(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
 				case DYNDNS_PASSWORD__PROP: setDyndnsPassword(de.haumacher.msgbuf.json.JsonUtil.nextStringOptional(in)); break;
+				case RETENTION_PERIOD__PROP: setRetentionPeriod(de.haumacher.phoneblock.ab.proto.RetentionPeriod.readRetentionPeriod(in)); break;
 				default: super.readField(in, field);
 			}
 		}

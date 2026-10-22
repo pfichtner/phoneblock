@@ -1,0 +1,393 @@
+/*
+ * Copyright (c) 2025 Bernhard Haumacher et al. All Rights Reserved.
+ */
+package de.haumacher.phoneblock.app.api;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.ibatis.session.SqlSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import de.haumacher.msgbuf.json.JsonReader;
+import de.haumacher.msgbuf.json.JsonWriter;
+import de.haumacher.msgbuf.server.io.ReaderAdapter;
+import de.haumacher.msgbuf.server.io.WriterAdapter;
+import de.haumacher.phoneblock.analysis.NumberAnalyzer;
+import de.haumacher.phoneblock.app.LoginFilter;
+import de.haumacher.phoneblock.app.api.model.NumberList;
+import de.haumacher.phoneblock.app.api.model.PersonalizedNumber;
+import de.haumacher.phoneblock.app.api.model.Rating;
+import de.haumacher.phoneblock.db.BlockList;
+import de.haumacher.phoneblock.db.DB;
+import de.haumacher.phoneblock.db.DBPersonalization;
+import de.haumacher.phoneblock.db.DBPhoneComment;
+import de.haumacher.phoneblock.db.DBService;
+import de.haumacher.phoneblock.db.DBUserComment;
+import de.haumacher.phoneblock.db.DBUserSettings;
+import de.haumacher.phoneblock.db.Ratings;
+import de.haumacher.phoneblock.db.SpamReports;
+import de.haumacher.phoneblock.db.Users;
+import de.haumacher.phoneblock.util.ServletUtil;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * API servlet for managing user's personalized black and white lists.
+ *
+ * <p>
+ * Allows mobile apps to retrieve and delete personalized blocked (blacklist) and
+ * legitimate (whitelist) phone numbers. Requires Bearer token authentication.
+ * </p>
+ *
+ * <p>
+ * <b>GET /api/blacklist</b> - Retrieve user's blocked phone numbers
+ * </p>
+ *
+ * <p>
+ * <b>DELETE /api/blacklist/{phone}</b> - Remove phone number from blacklist
+ * </p>
+ *
+ * <p>
+ * <b>GET /api/whitelist</b> - Retrieve user's legitimate phone numbers
+ * </p>
+ *
+ * <p>
+ * <b>DELETE /api/whitelist/{phone}</b> - Remove phone number from whitelist
+ * </p>
+ */
+@WebServlet(urlPatterns = {
+	PersonalizationServlet.BLACKLIST_PATTERN,
+	PersonalizationServlet.WHITELIST_PATTERN
+})
+public class PersonalizationServlet extends HttpServlet {
+
+	private static final Logger LOG = LoggerFactory.getLogger(PersonalizationServlet.class);
+
+	/** Servlet path for blacklist API. */
+	public static final String BLACKLIST_PATH = "/api/blacklist";
+
+	public static final String BLACKLIST_PATTERN = PersonalizationServlet.BLACKLIST_PATH + "/*";
+
+	/** Servlet path for whitelist API. */
+	public static final String WHITELIST_PATH = "/api/whitelist";
+
+	public static final String WHITELIST_PATTERN = PersonalizationServlet.WHITELIST_PATH + "/*";
+
+	@Override
+	protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		try {
+			super.service(req, resp);
+		} catch (Exception ex) {
+			LOG.error("Request failed.", ex);
+			
+			String message = ex.getMessage();
+			ServletUtil.sendMessage(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, 
+				ex.getClass().getName() + (message == null ? "" : ": " + message));
+		}
+	}
+	
+	@Override
+	protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String userName = LoginFilter.getAuthenticatedUser(req);
+		if (userName == null) {
+			ServletUtil.sendAuthenticationRequest(resp);
+			return;
+		}
+
+		DB db = DBService.getInstance();
+		try (SqlSession session = db.openSession()) {
+			Users users = session.getMapper(Users.class);
+			Long userId = users.getUserId(userName);
+
+			if (userId == null) {
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "User not found");
+				return;
+			}
+
+			BlockList blockList = session.getMapper(BlockList.class);
+			List<DBPersonalization> entries;
+
+			String servletPath = req.getServletPath();
+			if (BLACKLIST_PATH.equals(servletPath)) {
+				entries = blockList.getPersonalizationsWithCreated(userId);
+				LOG.debug("Retrieved {} blocked numbers for user '{}'", entries.size(), userName);
+			} else if (WHITELIST_PATH.equals(servletPath)) {
+				entries = blockList.getWhiteListWithCreated(userId);
+				LOG.debug("Retrieved {} whitelisted numbers for user '{}'", entries.size(), userName);
+			} else {
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "Unknown endpoint");
+				return;
+			}
+
+			// Extract phone IDs and created timestamps
+			List<String> phoneIds = new ArrayList<>();
+			Map<String, Long> createdMap = new HashMap<>();
+			for (DBPersonalization entry : entries) {
+				phoneIds.add(entry.getPhone());
+				createdMap.put(entry.getPhone(), entry.getCreated());
+			}
+
+			// Fetch comments and ratings for the numbers
+			SpamReports spamReports = session.getMapper(SpamReports.class);
+			Map<String, DBPhoneComment> commentsMap = new HashMap<>();
+			if (!phoneIds.isEmpty()) {
+				List<DBPhoneComment> userComments = spamReports.getUserComments(userId, phoneIds);
+				for (DBPhoneComment entry : userComments) {
+					commentsMap.put(entry.getPhone(), entry);
+				}
+			}
+
+			// Build PersonalizedNumber list with comments, ratings, and locale-formatted labels
+			List<PersonalizedNumber> numbers = new ArrayList<>();
+			for (String phoneId : phoneIds) {
+				// Parse and format the phone number according to the locale they are stored in the DB.
+				de.haumacher.phoneblock.app.api.model.PhoneNumer phoneInfo = NumberAnalyzer.parsePhoneId(phoneId);
+				if (phoneInfo == null) {
+					continue;
+				}
+				String phoneInternational = phoneInfo.getPlus();
+				String label = phoneInfo.getShortcut();
+
+				DBPhoneComment commentRating = commentsMap.get(phoneId);
+				PersonalizedNumber pn = PersonalizedNumber.create()
+					.setPhone(phoneInternational)
+					.setLabel(label)
+					.setComment(commentRating != null ? commentRating.getComment() : null)
+					.setRating(commentRating != null ? commentRating.getRating() : null)
+					.setCreated(createdMap.getOrDefault(phoneId, 0L));
+				numbers.add(pn);
+			}
+
+			// Personal wildcards (#377): part of the same list, flagged so the client matches
+			// incoming numbers by prefix and reports catches with wildcard=true.
+			boolean blocked = BLACKLIST_PATH.equals(servletPath);
+			for (DBPersonalization wildcard : blockList.getWildcardsWithCreated(userId, blocked)) {
+				numbers.add(PersonalizedNumber.create()
+					.setPhone(NumberAnalyzer.toInternationalFormat(wildcard.getPhone()))
+					.setWildcard(true)
+					.setCreated(wildcard.getCreated()));
+			}
+
+			sendNumberList(resp, numbers);
+		}
+	}
+
+	@Override
+	protected void doPut(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String userName = LoginFilter.getAuthenticatedUser(req);
+		if (userName == null) {
+			ServletUtil.sendAuthenticationRequest(resp);
+			return;
+		}
+
+		// Extract phone number from path: /api/blacklist/{phone} or /api/whitelist/{phone}
+		String pathInfo = req.getPathInfo();
+		if (pathInfo == null || pathInfo.length() <= 1) {
+			ServletUtil.sendError(resp, "Phone number required in path (e.g., /api/blacklist/+491234567890)");
+			return;
+		}
+
+		String phoneText = pathInfo.substring(1); // Remove leading '/'
+
+		// Read comment from request body
+		PersonalizedNumber update = PersonalizedNumber.readPersonalizedNumber(new JsonReader(new ReaderAdapter(req.getReader())));
+		String comment = update.getComment();
+
+		DB db = DBService.getInstance();
+		try (SqlSession session = db.openSession()) {
+			Users users = session.getMapper(Users.class);
+			Long userId = users.getUserId(userName);
+
+			if (userId == null) {
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "User not found");
+				return;
+			}
+
+			// Get user's dial prefix and normalize phone number
+			String dialPrefix = users.getDialPrefix(userName);
+
+			if (update.isWildcard()) {
+				// Create (or re-block) a personal wildcard prefix (#377): no community vote,
+				// honored only by the user's own devices.
+				String prefix = NumberAnalyzer.toWildcardId(phoneText, dialPrefix);
+				if (prefix == null) {
+					ServletUtil.sendError(resp, "Invalid wildcard prefix");
+					return;
+				}
+				boolean blocked = req.getServletPath().equals(BLACKLIST_PATH);
+				BlockList blockList = session.getMapper(BlockList.class);
+				blockList.removePersonalization(userId, prefix);
+				// Covered concrete blocks are kept (they carry the user's per-user evidence) and only
+				// hidden from display/export by the wildcard-cover filter — not deleted.
+				blockList.addWildcard(userId, prefix, blocked, System.currentTimeMillis());
+				session.commit();
+				resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+				return;
+			}
+
+			String phone = NumberAnalyzer.toId(phoneText, dialPrefix);
+
+			if (phone == null) {
+				ServletUtil.sendError(resp, "Invalid phone number format");
+				return;
+			}
+
+			// Check if personalization exists for this phone number
+			BlockList blockList = session.getMapper(BlockList.class);
+			Boolean personalizationState = blockList.getPersonalizationState(userId, phone);
+
+			if (personalizationState == null) {
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "Phone number not found in personalization list");
+				return;
+			}
+
+			SpamReports spamReports = session.getMapper(SpamReports.class);
+			int updated = spamReports.updateUserComment(userId, phone, comment);
+
+			// If no existing comment was updated, create a new one
+			if (updated == 0) {
+				// Determine rating based on whether it's blacklist or whitelist
+				boolean isBlacklist = req.getServletPath().equals(BLACKLIST_PATH);
+				Rating rating = isBlacklist ? Rating.B_MISSED : Rating.A_LEGITIMATE;
+
+				// Get user's language setting
+				DBUserSettings settings = users.getSettingsById(userId);
+				String lang = settings.getLang();
+
+				// Create new comment
+				String commentId = java.util.UUID.randomUUID().toString();
+				long now = System.currentTimeMillis();
+				spamReports.addComment(commentId, phone, rating, comment, lang, null, now, userId);
+
+				LOG.info("Created comment for {} in {} for user '{}'", phone, isBlacklist ? "blacklist" : "whitelist", userName);
+			} else {
+				LOG.info("Updated comment for {} in {} for user '{}'", phone, req.getServletPath().equals(BLACKLIST_PATH) ? "blacklist" : "whitelist", userName);
+			}
+
+			session.commit();
+			resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+		}
+	}
+
+	@Override
+	protected void doDelete(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		String userName = LoginFilter.getAuthenticatedUser(req);
+		if (userName == null) {
+			LOG.debug("Unauthenticated delete request: {}", req.getRequestURI());
+
+			ServletUtil.sendAuthenticationRequest(resp);
+			return;
+		}
+
+		// Extract phone number from path: /api/blacklist/{phone} or /api/whitelist/{phone}
+		String pathInfo = req.getPathInfo();
+		if (pathInfo == null || pathInfo.length() <= 1) {
+			ServletUtil.sendError(resp, "Phone number required in path (e.g., /api/blacklist/+491234567890)");
+			return;
+		}
+
+		String phoneText = pathInfo.substring(1); // Remove leading '/'
+		LOG.debug("Received delete request from user {} for {}.", userName, phoneText);
+
+		DB db = DBService.getInstance();
+		try (SqlSession session = db.openSession()) {
+			Users users = session.getMapper(Users.class);
+			Long userId = users.getUserId(userName);
+
+			if (userId == null) {
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "User not found");
+				return;
+			}
+
+			// Get user's dial prefix and normalize phone number
+			String dialPrefix = users.getDialPrefix(userName);
+
+			if (Boolean.parseBoolean(req.getParameter("wildcard"))) {
+				// Remove a personal wildcard prefix (#377); nothing to invert, no vote was cast.
+				String prefix = NumberAnalyzer.toWildcardId(phoneText, dialPrefix);
+				boolean removed = prefix != null && session.getMapper(BlockList.class).removeWildcard(userId, prefix);
+				session.commit();
+				if (removed) {
+					resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+				} else {
+					ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "Wildcard not found in personalization list");
+				}
+				return;
+			}
+
+			String phoneId = NumberAnalyzer.toId(phoneText, dialPrefix);
+
+			BlockList blockList = session.getMapper(BlockList.class);
+
+			// Capture the user's tracked activity before removal so the residual capped evidence
+			// contribution (increment(1, lastActivity)) can be reversed.
+			DBPersonalization existing = phoneId == null ? null : blockList.getPersonalizationActivity(userId, phoneId);
+
+			// Safety: DB content may be inconsistent: Try also deletion of invalid phone numbers.
+			boolean deleted = blockList.removePersonalization(userId, phoneId == null ? phoneText : phoneId);
+			String listType = req.getServletPath().equals(BLACKLIST_PATH) ? "blacklist" : "whitelist";
+
+			if (deleted) {
+				// Also delete the user's comment and decrement vote counts
+				SpamReports spamReports = session.getMapper(SpamReports.class);
+				long now = System.currentTimeMillis();
+
+				int voteDelta = 0;
+				DBUserComment userComment = spamReports.getUserComment(userId, phoneId);
+				if (userComment != null) {
+					// Delete the comment
+					spamReports.deleteUserComments(userId, phoneId);
+
+					if (phoneId != null) {
+						// Roll back the legacy VOTES/rating counters for the user's rating.
+						Rating rating = userComment.getRating();
+						voteDelta = -Ratings.getVotes(rating);
+						spamReports.updateRating(phoneId, rating, -1, now);
+						LOG.debug("Decremented rating {} for {} (vote delta: {})", rating, phoneId, voteDelta);
+					}
+				}
+
+				if (phoneId != null && existing != null) {
+					// Reverse the user's residual capped evidence contribution from the matching
+					// axis (and the per-region row), folding the VOTES rollback into the same update.
+					de.haumacher.phoneblock.app.api.model.PhoneNumer number = NumberAnalyzer.parsePhoneId(phoneId);
+					byte[] hash = number != null ? NumberAnalyzer.getPhoneHash(number) : null;
+					db.revertPersonalContribution(spamReports, phoneId, hash, dialPrefix,
+						existing.isBlocked(), existing.getLastActivity(), voteDelta, now);
+				} else if (voteDelta != 0) {
+					// No tracked entry (legacy/inconsistent data) — keep the plain VOTES rollback.
+					spamReports.addVote(phoneId, voteDelta, now, 0.0, 0.0, 0.0);
+				}
+
+				session.commit();
+				LOG.info("Removed {} from {} for user '{}'", phoneId, listType, userName);
+
+				resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+			} else {
+				LOG.info("Invalid delete request for {} for user '{}': {}", listType, userName, phoneId);
+
+				ServletUtil.sendMessage(resp, HttpServletResponse.SC_NOT_FOUND, "Phone number not found in personalization list");
+			}
+		}
+	}
+
+	/**
+	 * Sends number list as JSON response.
+	 */
+	private void sendNumberList(HttpServletResponse resp, List<PersonalizedNumber> numbers) throws IOException {
+		NumberList response = NumberList.create()
+				.setNumbers(numbers);
+
+		resp.setContentType("application/json");
+		resp.setCharacterEncoding("UTF-8");
+		response.writeContent(new JsonWriter(new WriterAdapter(resp.getWriter())));
+	}
+}

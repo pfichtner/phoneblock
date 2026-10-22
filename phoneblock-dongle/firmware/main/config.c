@@ -1,0 +1,915 @@
+#ifndef ESP_PLATFORM
+#define _POSIX_C_SOURCE 200809L
+#endif
+
+#include "config.h"
+#include "platform.h"
+
+#include <stdio.h>
+#include <string.h>
+
+#include "mail_rcpt.h"   // MAIL_RCPT_SPEC_CAP sizes the recipient field
+#include "name_filter.h" // NAME_FILTER_SPEC_CAP sizes the spam-name field
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+#ifndef CONFIG_SIP_REGISTRAR_PORT
+#define CONFIG_SIP_REGISTRAR_PORT 5060
+#endif
+#ifndef CONFIG_SIP_EXPIRES
+#define CONFIG_SIP_EXPIRES 3600
+#endif
+#ifndef CONFIG_SIP_CONTACT_HOST_OVERRIDE
+#define CONFIG_SIP_CONTACT_HOST_OVERRIDE ""
+#endif
+#ifndef CONFIG_SIP_CONTACT_PORT_OVERRIDE
+#define CONFIG_SIP_CONTACT_PORT_OVERRIDE 0
+#endif
+#ifndef CONFIG_PHONEBLOCK_BASE_URL
+#define CONFIG_PHONEBLOCK_BASE_URL "https://phoneblock.net/phoneblock"
+#endif
+#ifndef CONFIG_DONGLE_DEFAULT_TZ
+#define CONFIG_DONGLE_DEFAULT_TZ "CET-1CEST,M3.5.0,M10.5.0/3"
+#endif
+
+// Must be last: bans unsafe string APIs for the rest of this file.
+#include "banned_apis.h"
+
+static const char *TAG  = "config";
+static const char *NS   = "phoneblock";
+
+// ESP-IDF NVS keys are at most 15 chars.
+#define K_SIP_HOST      "sip_host"
+#define K_SIP_PORT      "sip_port"
+#define K_SIP_USER      "sip_user"
+#define K_SIP_PASS      "sip_pass"
+#define K_SIP_EXPIRES   "sip_expires"
+#define K_SIP_INT_NUM   "sip_int_num"
+#define K_SIP_TRANSP    "sip_transp"
+#define K_SIP_AUTHUSER  "sip_authuser"
+#define K_SIP_OUTBOUND  "sip_outbound"
+#define K_SIP_REALM     "sip_realm"
+#define K_SIP_SRTP      "sip_srtp"
+#define K_SIP_STUN      "sip_stun"
+#define K_FB_APP_USER   "fb_app_user"
+#define K_FB_APP_PASS   "fb_app_pass"
+#define K_FB_PB_ID      "fb_pb_id"
+#define K_FB_PB_NAME    "fb_pb_name"
+#define K_SYNC_ENABLED  "sync_enabled"
+#define K_LOG_KNOWN     "log_known_calls"
+#define K_LOG_INFO      "log_info"
+#define K_LED_QUIET     "led_quiet"
+#define K_LCD_FLIP      "lcd_flip"
+#define K_AUTH_ENABLED  "auth_enabled"
+#define K_AUTH_USER     "auth_user"
+#define K_AUTH_PERSIST  "auth_persist"
+#define K_AUTO_UPDATE   "auto_update"
+#define K_OTA_CHANNEL   "ota_channel"
+#define K_CRASH_REPORT  "crash_report"
+#define K_ACCEPT_TEST   "accept_test"
+#define K_BL_WILDCARDS  "bl_wildcards"
+#define K_BL_ENABLED    "bl_enabled"
+#define K_SPAM_NAMES    "spam_names"
+#define K_CONTACT_HOST  "contact_host"
+#define K_CONTACT_PORT  "contact_port"
+#define K_SIP_LPORT     "sip_lport"
+#define K_RTP_PORT      "rtp_port"
+#define K_PB_URL        "pb_url"
+#define K_PB_TOKEN      "pb_token"
+#define K_MIN_DIRECT    "min_direct"
+#define K_MIN_RANGE     "min_range"
+#define K_SMTP_HOST     "smtp_host"
+#define K_SMTP_PORT     "smtp_port"
+#define K_SMTP_SECURITY "smtp_security"
+#define K_SMTP_USER     "smtp_user"
+#define K_SMTP_PASS     "smtp_pass"
+#define K_SMTP_FROM     "smtp_from"
+#define K_SMTP_TO       "smtp_to"
+#define K_MAIL_ON_ERROR "mail_on_error"
+#define K_MAIL_ON_SPAM  "mail_on_spam"
+#define K_MAIL_ON_UPDATE "mail_on_update"
+#define K_DEVICE_ID     "device_id"
+#define K_TIMEZONE      "timezone"
+#define K_UI_LANG       "ui_lang"
+#define K_DIAL_PREFIX   "dial_prefix"
+
+// Country dial prefix assumed when a caller ID arrives in national form
+// (single leading trunk "0"). Germany, because that is where the fleet
+// that predates this setting lives — those devices must keep normalising
+// exactly as before (issue #505). New devices overwrite it with the
+// PhoneBlock account's value at token activation; everyone else picks
+// their country in the web UI.
+#define DEFAULT_DIAL_PREFIX "+49"
+
+// Direct-vote default mirrors DB.MIN_VOTES on the server (the
+// confidence floor the public blocklist export already enforces).
+#define DEFAULT_MIN_DIRECT_VOTES 4
+// Range votes are weaker evidence (numbers in the same 10/100-block
+// reported, not the queried number itself). Default at 10 keeps the
+// dongle conservative on neighborhood signals; users who want
+// aggressive range-blocking can lower it, users who want to disable
+// range entirely can set it to 0.
+#define DEFAULT_MIN_RANGE_VOTES 10
+// Local SIP / RTP bind ports. High "unsuspicious" ports on purpose: not
+// 5060/5061, so they dodge router SIP-ALGs (which only mangle 5060) and
+// are not reserved by a FritzBox's own SIP stack — forwardable 1:1 behind
+// NAT. 15060 is mnemonic ("1"+5060); RTP sits next to it on 16000. Stored
+// 0 means "use this default".
+#define DEFAULT_SIP_LOCAL_PORT 15060
+#define DEFAULT_RTP_PORT       16000
+// Version string of the most recent OTA download that did NOT survive
+// to the next successful boot. Set pessimistically before
+// esp_https_ota() runs and only cleared once main.c sees the running
+// image is the version stored here — i.e. the bootloader did not roll
+// back. The auto-update task uses this to break the
+// download → brick → rollback → retry-same-bits loop.
+#define K_LAST_FAIL_OTA "last_fail_ota"
+
+typedef struct {
+    char sip_host[64];
+    int  sip_port;
+    char sip_user[32];
+    char sip_pass[64];
+    int  sip_expires;
+    char sip_int_num[16];
+    char sip_transp[8];      // "udp" | "tcp" | "tls"
+    char sip_authuser[32];
+    char sip_outbound[80];
+    char sip_realm[64];
+    char sip_srtp[16];       // "off" | "optional" | "mandatory"
+    char sip_stun[64];       // STUN server "host[:port]" for RTP NAT
+                             // discovery; "" = disabled (set by provider preset)
+    char fb_app_user[32];
+    char fb_app_pass[40];    // spec cap is 32; 40 for NUL + padding
+    // Phonebook the "add caller to the address book" action writes to.
+    // Learned on first use (the user picks one when the box has more than
+    // one writable book) and changeable in the settings afterwards. Empty
+    // = not chosen yet.
+    char fb_pb_id[8];        // decimal NewPhonebookID, "" = unset
+    char fb_pb_name[64];     // its name, for display only
+    char sync_enabled[4];    // "1" | "0" (or empty = default off)
+    char log_known[4];       // "1" | "0" (or empty = default on)
+    char log_info[4];        // "1" = also mirror INFO lines to the log panel (default off)
+    char led_quiet[4];       // "1" = LED dark when READY (default off = solid on)
+    char lcd_flip[4];        // "1" = T-Dongle-S3 display rotated 180° (default off)
+    char auth_enabled[4];    // "1" | "0" (or empty = default off)
+    char auth_user[64];      // pinned PhoneBlock user-name; empty = no pin
+    char auth_persist[33];   // 32 hex chars + NUL; empty = nobody is "remembered"
+    char auto_update[4];     // "1" | "0" (or empty = default on)
+    char ota_channel[8];     // "stable" | "beta" (empty = default stable)
+    char crash_report[4];    // "1" | "0" (or empty = default on)
+    char accept_test[4];     // "1" | "0" (empty = use Kconfig default)
+    char bl_wildcards[4];    // "1" | "0" (empty = default on)
+    char bl_enabled[4];      // "1" | "0" (empty = default on)
+    // Caller names that mean spam: one or more texts, '|'-separated (parsed by
+    // name_filter.c, which also sizes this field so a full spec survives a
+    // round-trip through NVS). Empty = the name filter is off.
+    char spam_names[NAME_FILTER_SPEC_CAP];
+    char contact_host[64];
+    int  contact_port;
+    int  sip_local_port;     // 0 = use DEFAULT_SIP_LOCAL_PORT
+    int  rtp_port;           // 0 = use DEFAULT_RTP_PORT
+    char pb_base_url[128];
+    char pb_token[64];
+    int  min_direct_votes;   // SPAM threshold for direct hits
+    int  min_range_votes;    // SPAM threshold for wildcard/range hits; 0 = off
+    // Status email (SMTP submission via the user's own mail account).
+    char smtp_host[64];
+    int  smtp_port;          // 0 = derive from smtp_security (465 tls / 587 starttls)
+    char smtp_security[10];  // "tls" (implicit, default) | "starttls"
+    char smtp_user[64];
+    char smtp_pass[64];
+    char smtp_from[64];      // sender; empty = use smtp_user
+    // Recipients of the status mails: one or more addresses, ';'-separated
+    // (parsed by mail_rcpt.c, which also sizes this field so a full list
+    // survives a round-trip through NVS).
+    char smtp_to[MAIL_RCPT_SPEC_CAP];
+    char mail_on_error[4];   // "1" = mail on ERROR/crash (default off)
+    char mail_on_spam[4];    // "1" = mail when spam calls were caught (default off)
+    char mail_on_update[4];  // "0" = suppress firmware-update mail (default on)
+    char last_failed_ota[32];   // semver, plus headroom for "-rcN" suffixes
+    char timezone[64];       // POSIX TZ string (empty = use Kconfig default)
+    char ui_lang[12];        // UI/content locale code ("de","en","zh-Hans",…);
+                             // empty = default "de". Selects the downloaded
+                             // announcement + mail pack; spliced into a CDN
+                             // URL and a SPIFFS filename, so validated on read.
+    char dial_prefix[8];     // "+49", "+44", … Country of the line, used to
+                             // expand national caller IDs to E.164. Empty or
+                             // malformed reads back as DEFAULT_DIAL_PREFIX.
+} config_cache_t;
+
+static config_cache_t s_config;
+
+// --- Helpers --------------------------------------------------------
+
+static void copy_default(char *dst, size_t cap, const char *def)
+{
+    size_t n = strnlen(def, cap - 1);
+    memcpy(dst, def, n);
+    dst[n] = '\0';
+}
+
+static void load_str(pb_kv_t *h, const char *key, const char *def,
+                     char *dst, size_t cap)
+{
+    size_t len = cap;
+    if (pb_kv_get_string(h, key, dst, &len) != PB_KV_OK) {
+        copy_default(dst, cap, def);
+    }
+}
+
+static int load_int(pb_kv_t *h, const char *key, int def)
+{
+    int32_t v;
+    return pb_kv_get_i32(h, key, &v) == PB_KV_OK ? (int)v : def;
+}
+
+// Stable per-device id, a UUIDv4 string ("xxxxxxxx-…-xxxxxxxxxxxx", 36
+// chars). Minted once on first boot and persisted; it survives OTA
+// updates and is only cleared by a factory reset (config_erase wipes the
+// whole namespace). Used as the SIP +sip.instance and in the HTTP
+// User-Agent so the registrar and the PhoneBlock service can recognise
+// the same physical device across reboots and token renewals.
+static char s_device_id[37] = "";
+
+static void format_uuid(const uint8_t b[16], char *out /* >= 37 */)
+{
+    snprintf(out, 37,
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        b[0], b[1], b[2],  b[3],  b[4],  b[5],  b[6],  b[7],
+        b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]);
+}
+
+// Read the device id from NVS, or mint and persist one on first boot.
+// Runs single-threaded from config_load(), before any task that consumes
+// the id starts — so no locking is needed. Creating the namespace here on
+// a fresh device is harmless: the not-found and normal load paths below
+// resolve to identical defaults.
+static void ensure_device_id(void)
+{
+    pb_kv_t *h;
+    int err = pb_kv_open(NS, true, &h);
+    if (err != PB_KV_OK) {
+        pb_log_err(TAG, "device-id nvs_open: %s", pb_kv_err_name(err));
+        return;
+    }
+
+    size_t len = sizeof(s_device_id);
+    if (pb_kv_get_string(h, K_DEVICE_ID, s_device_id, &len) == PB_KV_OK
+            && s_device_id[0]) {
+        pb_kv_close(h);
+        pb_log_info(TAG, "device id %s", s_device_id);
+        return;
+    }
+
+    // First boot with this firmware: mint a v4 UUID. esp_fill_random
+    // provides the entropy; XOR the factory MAC into the node field so the
+    // id stays globally unique even if the RNG is weakly seeded this early.
+    uint8_t b[16];
+    pb_random_fill(b, sizeof(b));
+    uint8_t mac[6];
+    if (pb_get_mac(mac) == 0) {
+        for (int i = 0; i < 6; i++) b[10 + i] ^= mac[i];
+    }
+    b[6] = (uint8_t)((b[6] & 0x0F) | 0x40);  // version 4
+    b[8] = (uint8_t)((b[8] & 0x3F) | 0x80);  // variant 1 (RFC 4122)
+    format_uuid(b, s_device_id);
+
+    err = pb_kv_set_string(h, K_DEVICE_ID, s_device_id);
+    if (err == PB_KV_OK) err = pb_kv_commit(h);
+    pb_kv_close(h);
+    if (err != PB_KV_OK) {
+        pb_log_err(TAG, "device id persist failed: %s", pb_kv_err_name(err));
+    } else {
+        pb_log_info(TAG, "minted device id %s", s_device_id);
+    }
+}
+
+const char *config_device_id(void)
+{
+    return s_device_id;
+}
+
+// --- Public API -----------------------------------------------------
+
+void config_load(void)
+{
+    ensure_device_id();
+
+    pb_kv_t *h;
+    int err = pb_kv_open(NS, false, &h);
+    if (err == PB_KV_NOT_FOUND) {
+        // Namespace not yet created. SIP credentials + PhoneBlock
+        // token stay empty — the setup wizard fills them. Other
+        // fields keep their Kconfig defaults (port, expiry, contact
+        // overrides for QEMU, API base URL).
+        pb_log_info(TAG, "NVS namespace '%s' empty, using Kconfig defaults", NS);
+        s_config.sip_host[0]    = '\0';
+        s_config.sip_port       = CONFIG_SIP_REGISTRAR_PORT;
+        s_config.sip_user[0]    = '\0';
+        s_config.sip_pass[0]    = '\0';
+        s_config.sip_expires    = CONFIG_SIP_EXPIRES;
+        s_config.sip_int_num[0]   = '\0';
+        copy_default(s_config.sip_transp, sizeof(s_config.sip_transp), "udp");
+        s_config.sip_authuser[0]  = '\0';
+        s_config.sip_outbound[0]  = '\0';
+        s_config.sip_realm[0]     = '\0';
+        copy_default(s_config.sip_srtp,   sizeof(s_config.sip_srtp),   "optional");
+        s_config.sip_stun[0]      = '\0';
+        s_config.fb_app_user[0]   = '\0';
+        s_config.fb_app_pass[0]   = '\0';
+        s_config.fb_pb_id[0]      = '\0';
+        s_config.fb_pb_name[0]    = '\0';
+        s_config.sync_enabled[0]  = '\0';
+        s_config.log_known[0]     = '\0';
+        s_config.log_info[0]      = '\0';
+        s_config.led_quiet[0]     = '\0';
+        s_config.lcd_flip[0]      = '\0';
+        s_config.auth_enabled[0]  = '\0';
+        s_config.auth_user[0]     = '\0';
+        s_config.auth_persist[0]  = '\0';
+        s_config.auto_update[0]   = '\0';
+        s_config.ota_channel[0]   = '\0';
+        s_config.crash_report[0]  = '\0';
+        s_config.accept_test[0]   = '\0';
+        s_config.bl_wildcards[0]  = '\0';
+        s_config.bl_enabled[0]    = '\0';
+        s_config.spam_names[0]    = '\0';
+        copy_default(s_config.contact_host, sizeof(s_config.contact_host), CONFIG_SIP_CONTACT_HOST_OVERRIDE);
+        s_config.contact_port = CONFIG_SIP_CONTACT_PORT_OVERRIDE;
+        s_config.sip_local_port = 0;   // → DEFAULT_SIP_LOCAL_PORT
+        s_config.rtp_port       = 0;   // → DEFAULT_RTP_PORT
+        copy_default(s_config.pb_base_url,  sizeof(s_config.pb_base_url),  CONFIG_PHONEBLOCK_BASE_URL);
+        s_config.pb_token[0]  = '\0';
+        s_config.min_direct_votes = DEFAULT_MIN_DIRECT_VOTES;
+        s_config.min_range_votes  = DEFAULT_MIN_RANGE_VOTES;
+        s_config.smtp_host[0]     = '\0';
+        s_config.smtp_port        = 0;   // → derive from security
+        copy_default(s_config.smtp_security, sizeof(s_config.smtp_security), "tls");
+        s_config.smtp_user[0]     = '\0';
+        s_config.smtp_pass[0]     = '\0';
+        s_config.smtp_from[0]     = '\0';
+        s_config.smtp_to[0]       = '\0';
+        s_config.mail_on_error[0] = '\0';
+        s_config.mail_on_spam[0]  = '\0';
+        s_config.mail_on_update[0] = '\0';   // empty → default on (see getter)
+        s_config.last_failed_ota[0] = '\0';
+        copy_default(s_config.timezone, sizeof(s_config.timezone), CONFIG_DONGLE_DEFAULT_TZ);
+        s_config.ui_lang[0] = '\0';   // empty → default "en" (see getter)
+        s_config.dial_prefix[0] = '\0';   // empty → DEFAULT_DIAL_PREFIX (see getter)
+        return;
+    }
+    if (err != PB_KV_OK) {
+        pb_log_err(TAG, "nvs_open: %s — all defaults", pb_kv_err_name(err));
+        return;
+    }
+
+    load_str(h, K_SIP_HOST,     "",
+             s_config.sip_host,     sizeof(s_config.sip_host));
+    s_config.sip_port     = load_int(h, K_SIP_PORT,     CONFIG_SIP_REGISTRAR_PORT);
+    load_str(h, K_SIP_USER,     "",
+             s_config.sip_user,     sizeof(s_config.sip_user));
+    load_str(h, K_SIP_PASS,     "",
+             s_config.sip_pass,     sizeof(s_config.sip_pass));
+    s_config.sip_expires  = load_int(h, K_SIP_EXPIRES,  CONFIG_SIP_EXPIRES);
+    load_str(h, K_SIP_INT_NUM,  "",
+             s_config.sip_int_num,  sizeof(s_config.sip_int_num));
+    load_str(h, K_SIP_TRANSP,   "udp",
+             s_config.sip_transp,   sizeof(s_config.sip_transp));
+    load_str(h, K_SIP_AUTHUSER, "",
+             s_config.sip_authuser, sizeof(s_config.sip_authuser));
+    load_str(h, K_SIP_OUTBOUND, "",
+             s_config.sip_outbound, sizeof(s_config.sip_outbound));
+    load_str(h, K_SIP_REALM,    "",
+             s_config.sip_realm,    sizeof(s_config.sip_realm));
+    load_str(h, K_SIP_SRTP,     "optional",
+             s_config.sip_srtp,     sizeof(s_config.sip_srtp));
+    load_str(h, K_SIP_STUN,     "",
+             s_config.sip_stun,     sizeof(s_config.sip_stun));
+    load_str(h, K_FB_APP_USER,  "",
+             s_config.fb_app_user,  sizeof(s_config.fb_app_user));
+    load_str(h, K_FB_APP_PASS,  "",
+             s_config.fb_app_pass,  sizeof(s_config.fb_app_pass));
+    load_str(h, K_FB_PB_ID,     "",
+             s_config.fb_pb_id,     sizeof(s_config.fb_pb_id));
+    load_str(h, K_FB_PB_NAME,   "",
+             s_config.fb_pb_name,   sizeof(s_config.fb_pb_name));
+    load_str(h, K_SYNC_ENABLED, "",
+             s_config.sync_enabled, sizeof(s_config.sync_enabled));
+    load_str(h, K_LOG_KNOWN, "",
+             s_config.log_known, sizeof(s_config.log_known));
+    load_str(h, K_LOG_INFO, "",
+             s_config.log_info, sizeof(s_config.log_info));
+    load_str(h, K_LED_QUIET, "",
+             s_config.led_quiet, sizeof(s_config.led_quiet));
+    load_str(h, K_LCD_FLIP, "",
+             s_config.lcd_flip, sizeof(s_config.lcd_flip));
+    load_str(h, K_AUTH_ENABLED, "",
+             s_config.auth_enabled, sizeof(s_config.auth_enabled));
+    load_str(h, K_AUTH_USER, "",
+             s_config.auth_user, sizeof(s_config.auth_user));
+    load_str(h, K_AUTH_PERSIST, "",
+             s_config.auth_persist, sizeof(s_config.auth_persist));
+    load_str(h, K_AUTO_UPDATE, "",
+             s_config.auto_update, sizeof(s_config.auto_update));
+    load_str(h, K_OTA_CHANNEL, "",
+             s_config.ota_channel, sizeof(s_config.ota_channel));
+    load_str(h, K_CRASH_REPORT, "",
+             s_config.crash_report, sizeof(s_config.crash_report));
+    load_str(h, K_ACCEPT_TEST, "",
+             s_config.accept_test, sizeof(s_config.accept_test));
+    load_str(h, K_BL_WILDCARDS, "",
+             s_config.bl_wildcards, sizeof(s_config.bl_wildcards));
+    load_str(h, K_BL_ENABLED, "",
+             s_config.bl_enabled, sizeof(s_config.bl_enabled));
+    load_str(h, K_SPAM_NAMES, "",
+             s_config.spam_names, sizeof(s_config.spam_names));
+    load_str(h, K_CONTACT_HOST, CONFIG_SIP_CONTACT_HOST_OVERRIDE,
+             s_config.contact_host, sizeof(s_config.contact_host));
+    s_config.contact_port = load_int(h, K_CONTACT_PORT, CONFIG_SIP_CONTACT_PORT_OVERRIDE);
+    s_config.sip_local_port = load_int(h, K_SIP_LPORT, 0);
+    s_config.rtp_port       = load_int(h, K_RTP_PORT,  0);
+    load_str(h, K_PB_URL,       CONFIG_PHONEBLOCK_BASE_URL,
+             s_config.pb_base_url,  sizeof(s_config.pb_base_url));
+    load_str(h, K_PB_TOKEN,     "",
+             s_config.pb_token,     sizeof(s_config.pb_token));
+    s_config.min_direct_votes = load_int(h, K_MIN_DIRECT, DEFAULT_MIN_DIRECT_VOTES);
+    s_config.min_range_votes  = load_int(h, K_MIN_RANGE,  DEFAULT_MIN_RANGE_VOTES);
+    load_str(h, K_SMTP_HOST, "",
+             s_config.smtp_host, sizeof(s_config.smtp_host));
+    s_config.smtp_port = load_int(h, K_SMTP_PORT, 0);
+    load_str(h, K_SMTP_SECURITY, "tls",
+             s_config.smtp_security, sizeof(s_config.smtp_security));
+    load_str(h, K_SMTP_USER, "",
+             s_config.smtp_user, sizeof(s_config.smtp_user));
+    load_str(h, K_SMTP_PASS, "",
+             s_config.smtp_pass, sizeof(s_config.smtp_pass));
+    load_str(h, K_SMTP_FROM, "",
+             s_config.smtp_from, sizeof(s_config.smtp_from));
+    load_str(h, K_SMTP_TO, "",
+             s_config.smtp_to, sizeof(s_config.smtp_to));
+    load_str(h, K_MAIL_ON_ERROR, "",
+             s_config.mail_on_error, sizeof(s_config.mail_on_error));
+    load_str(h, K_MAIL_ON_SPAM, "",
+             s_config.mail_on_spam, sizeof(s_config.mail_on_spam));
+    load_str(h, K_MAIL_ON_UPDATE, "",
+             s_config.mail_on_update, sizeof(s_config.mail_on_update));
+    load_str(h, K_LAST_FAIL_OTA, "",
+             s_config.last_failed_ota, sizeof(s_config.last_failed_ota));
+    load_str(h, K_TIMEZONE, CONFIG_DONGLE_DEFAULT_TZ,
+             s_config.timezone, sizeof(s_config.timezone));
+    load_str(h, K_UI_LANG, "",
+             s_config.ui_lang, sizeof(s_config.ui_lang));
+    load_str(h, K_DIAL_PREFIX, "",
+             s_config.dial_prefix, sizeof(s_config.dial_prefix));
+    pb_kv_close(h);
+
+    pb_log_info(TAG, "loaded config: sip=%s@%s:%d, pb=%s",
+             s_config.sip_user, s_config.sip_host, s_config.sip_port,
+             s_config.pb_base_url);
+}
+
+const char *config_sip_host(void)            { return s_config.sip_host; }
+int         config_sip_port(void)            { return s_config.sip_port; }
+const char *config_sip_user(void)            { return s_config.sip_user; }
+const char *config_sip_pass(void)            { return s_config.sip_pass; }
+int         config_sip_expires(void)         { return s_config.sip_expires; }
+const char *config_sip_internal_number(void) { return s_config.sip_int_num; }
+const char *config_sip_transport(void)       { return s_config.sip_transp[0] ? s_config.sip_transp : "udp"; }
+const char *config_sip_auth_user(void)       { return s_config.sip_authuser; }
+const char *config_sip_outbound(void)        { return s_config.sip_outbound; }
+const char *config_sip_realm(void)           { return s_config.sip_realm; }
+const char *config_sip_srtp(void)            { return s_config.sip_srtp[0] ? s_config.sip_srtp : "optional"; }
+const char *config_fritzbox_app_user(void)   { return s_config.fb_app_user; }
+const char *config_fritzbox_app_pass(void)   { return s_config.fb_app_pass; }
+const char *config_fritzbox_phonebook(void)  { return s_config.fb_pb_id; }
+const char *config_fritzbox_phonebook_name(void) { return s_config.fb_pb_name; }
+bool        config_sync_enabled(void)
+{
+    // Stored as "0"/"1"; anything empty / unrecognised means "off".
+    // The sync feature is fairly invasive (mass-submits numbers to
+    // PhoneBlock as spam on the user's behalf and then deletes them
+    // from the Fritz!Box), so the user has to opt in explicitly
+    // before anything happens automatically.
+    return s_config.sync_enabled[0] == '1';
+}
+bool        config_log_known_calls(void)
+{
+    // Default on (empty / unrecognised → log) so new users see every
+    // call the dongle handled. Only an explicit "0" disables listing.
+    return s_config.log_known[0] != '0';
+}
+bool        config_log_info(void)
+{
+    // Default off: the log panel shows only WARN/ERROR. Switched on from
+    // the UI for troubleshooting, when the context that only INFO lines
+    // carry (e.g. "registrar host:port") is needed. Only "1" enables it.
+    return s_config.log_info[0] == '1';
+}
+bool        config_led_quiet(void)
+{
+    // Default off (empty / unrecognised → solid-on when READY, the
+    // original behaviour). Only an explicit "1" flips the LED to
+    // dark-when-fine; see the header for the full semantics.
+    return s_config.led_quiet[0] == '1';
+}
+bool        config_lcd_flipped(void)
+{
+    // Default off (empty / unrecognised → normal orientation). Only an
+    // explicit "1" turns the display upside down.
+    return s_config.lcd_flip[0] == '1';
+}
+bool        config_auth_enabled(void)
+{
+    // Default off (empty / unrecognised → open) so the LAN-local UI
+    // stays reachable during initial setup. Only "1" closes it.
+    return s_config.auth_enabled[0] == '1';
+}
+const char *config_auth_user(void)        { return s_config.auth_user; }
+const char *config_auth_persist(void)     { return s_config.auth_persist; }
+const char *config_timezone(void)
+{
+    // Never hand out an empty string: a blank NVS value would leave the
+    // wall clock on UTC. Fall back to the Kconfig default in that case.
+    return s_config.timezone[0] ? s_config.timezone : CONFIG_DONGLE_DEFAULT_TZ;
+}
+bool config_lang_code_valid(const char *code)
+{
+    // A locale code as used by the web UI and CDN asset paths: 2..11 chars
+    // of [a-z0-9] with optional single hyphens between segments (e.g. "de",
+    // "en", "zh-Hans", "pt-BR" lower-cased). Deliberately strict — the value
+    // is spliced into a CDN URL and a SPIFFS filename, so this rules out
+    // path traversal ("../"), separators, and case tricks at the source.
+    if (!code) return false;
+    size_t n = strlen(code);
+    if (n < 2 || n > 11) return false;
+    if (code[0] == '-' || code[n - 1] == '-') return false;
+    for (size_t i = 0; i < n; i++) {
+        char ch = code[i];
+        bool ok = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+                  (ch == '-' && code[i - 1] != '-');
+        if (!ok) return false;
+    }
+    return true;
+}
+const char *config_ui_lang(void)
+{
+    // Clamp on read, mirroring config_ota_channel(): a blank or corrupt NVS
+    // value can never redirect an asset download to an arbitrary path. The
+    // default is English (the universal fallback used everywhere else — the
+    // embedded UI/mail packs and the download fallback chain), so a headless
+    // dongle that no browser ever configured mails and answers in English
+    // rather than assuming German.
+    return config_lang_code_valid(s_config.ui_lang) ? s_config.ui_lang : "en";
+}
+// Whether a valid UI language was ever explicitly configured (vs. running on
+// the default). The web UI uses this to auto-select the browser's language on
+// first contact without overriding a real user choice.
+bool config_ui_lang_is_set(void)
+{
+    return config_lang_code_valid(s_config.ui_lang);
+}
+bool config_dial_prefix_valid(const char *prefix)
+{
+    // "+" followed by 1..3 digits, first of them non-zero — the same shape
+    // the server accepts (AccountManagementServlet.DIAL_PREFIX_PATTERN), so
+    // a value adopted from the account always survives the round-trip.
+    if (!prefix) return false;
+    size_t n = strlen(prefix);
+    if (n < 2 || n > 4) return false;
+    if (prefix[0] != '+') return false;
+    if (prefix[1] < '1' || prefix[1] > '9') return false;
+    for (size_t i = 2; i < n; i++) {
+        if (prefix[i] < '0' || prefix[i] > '9') return false;
+    }
+    return true;
+}
+const char *config_dial_prefix(void)
+{
+    // Clamp on read like config_ui_lang(): the value is prepended to a
+    // caller ID that ends up in an API URL and a SHA-1 lookup key, so a
+    // blank or corrupt NVS read must degrade to the documented default
+    // rather than produce a malformed number.
+    return config_dial_prefix_valid(s_config.dial_prefix)
+           ? s_config.dial_prefix : DEFAULT_DIAL_PREFIX;
+}
+// Whether a country was ever explicitly configured (vs. running on the
+// DEFAULT_DIAL_PREFIX fallback). Gates the one-shot adoption of the
+// PhoneBlock account's value at token activation, so re-pairing a device
+// cannot silently overwrite a country the user picked in the web UI.
+bool config_dial_prefix_is_set(void)
+{
+    return config_dial_prefix_valid(s_config.dial_prefix);
+}
+bool        config_auto_update_enabled(void)
+{
+    // Default on (empty / unrecognised → enabled) so a fresh device
+    // tracks the released stream. Only an explicit "0" freezes it,
+    // typically after a manual firmware upload from the web UI.
+    return s_config.auto_update[0] != '0';
+}
+const char *config_ota_channel(void)
+{
+    // Allowlist: anything that isn't exactly "beta" maps to the
+    // default "stable". The result is spliced straight into the OTA
+    // poll URL path, so clamping here means a corrupt or unexpected
+    // NVS value can never redirect the dongle to an arbitrary host.
+    return strcmp(s_config.ota_channel, "beta") == 0 ? "beta" : "stable";
+}
+bool        config_crash_report_enabled(void)
+{
+    // Default on (empty / unrecognised → enabled) — a stored core
+    // dump is otherwise dead weight in flash, and we'd never see it.
+    // Only an explicit "0" suppresses uploads.
+    return s_config.crash_report[0] != '0';
+}
+bool        config_blocklist_wildcards(void)
+{
+    // Default on (empty / unrecognised → enabled) so new dongles
+    // benefit from community-aggregated wildcard ranges out of the box.
+    // Only an explicit "0" turns it off; the file format always carries
+    // the prefix section, the flag is read locally at lookup time.
+    return s_config.bl_wildcards[0] != '0';
+}
+bool        config_blocklist_enabled(void)
+{
+    // Default on (empty / unrecognised → enabled): the local blocklist
+    // cache is the call-time fast path, so a fresh dongle uses it out of
+    // the box. Only an explicit "0" turns the feature off — the daily
+    // download is skipped and call-time lookups bypass the local files
+    // and go straight to the server API.
+    return s_config.bl_enabled[0] != '0';
+}
+const char *config_spam_names(void)          { return s_config.spam_names; }
+bool        config_accept_test_calls(void)
+{
+    // Empty (= NVS key never written) defers to the Kconfig default
+    // so dev builds with CONFIG_SIP_TEST_FORCE_SPAM_STAR_NUMBERS=y
+    // come up with the hook on out of the box. Once the user has
+    // touched the toggle in the web UI, the persisted "0" / "1"
+    // wins regardless of the build-time default.
+    //
+    // Kconfig bool options expand to `#define CONFIG_FOO 1` when
+    // y and stay undefined when n — so the default has to come
+    // through #ifdef, not a direct read of the symbol.
+    if (s_config.accept_test[0] == '\0') {
+#ifdef CONFIG_SIP_TEST_FORCE_SPAM_STAR_NUMBERS
+        return true;
+#else
+        return false;
+#endif
+    }
+    return s_config.accept_test[0] == '1';
+}
+const char *config_contact_host_override(void) { return s_config.contact_host; }
+int         config_contact_port_override(void) { return s_config.contact_port; }
+int         config_sip_local_port(void)
+{
+    return s_config.sip_local_port > 0 ? s_config.sip_local_port
+                                       : DEFAULT_SIP_LOCAL_PORT;
+}
+int         config_rtp_port(void)
+{
+    return s_config.rtp_port > 0 ? s_config.rtp_port : DEFAULT_RTP_PORT;
+}
+const char *config_stun_server(void)         { return s_config.sip_stun; }
+const char *config_phoneblock_base_url(void) { return s_config.pb_base_url; }
+const char *config_phoneblock_token(void)    { return s_config.pb_token; }
+int         config_min_direct_votes(void)     { return s_config.min_direct_votes; }
+int         config_min_range_votes(void)      { return s_config.min_range_votes; }
+const char *config_smtp_host(void)           { return s_config.smtp_host; }
+const char *config_smtp_security(void)
+{
+    // Allowlist: anything that isn't exactly "starttls" maps to the
+    // default "tls" (implicit TLS on connect). Keeps a corrupt NVS value
+    // from selecting an unintended transport.
+    return strcmp(s_config.smtp_security, "starttls") == 0 ? "starttls" : "tls";
+}
+int         config_smtp_port(void)
+{
+    // Raw stored value; 0 = "auto" (let the caller derive the
+    // conventional submission port from the security mode). Returning
+    // the raw value lets the web UI round-trip "auto" as an empty field
+    // instead of pinning a derived port that a later security change
+    // would leave stale.
+    return s_config.smtp_port;
+}
+const char *config_smtp_user(void)           { return s_config.smtp_user; }
+const char *config_smtp_pass(void)           { return s_config.smtp_pass; }
+const char *config_smtp_from(void)
+{
+    // Empty From defaults to the login user — the common case where the
+    // account address is also the sender.
+    return s_config.smtp_from[0] ? s_config.smtp_from : s_config.smtp_user;
+}
+const char *config_smtp_to(void)             { return s_config.smtp_to; }
+bool        config_mail_on_error(void)
+{
+    // Default off: status mail is opt-in. Only "1" enables it.
+    return s_config.mail_on_error[0] == '1';
+}
+bool        config_mail_on_spam(void)
+{
+    return s_config.mail_on_spam[0] == '1';
+}
+bool        config_mail_on_update(void)
+{
+    // Default on: a firmware update is low-volume and worth telling the
+    // owner about. Only an explicit "0" (box unticked and saved) suppresses
+    // it; an unset/empty value — an untouched device — counts as on.
+    return s_config.mail_on_update[0] != '0';
+}
+const char *config_last_failed_ota(void)     { return s_config.last_failed_ota; }
+
+int config_set_last_failed_ota(const char *version)
+{
+    pb_kv_t *h;
+    int err = pb_kv_open(NS, true, &h);
+    if (err != PB_KV_OK) return err;
+    if (version == NULL || version[0] == '\0') {
+        // Tolerate "key never written" — that's the steady state.
+        err = pb_kv_erase_key(h, K_LAST_FAIL_OTA);
+        if (err == PB_KV_NOT_FOUND) err = PB_KV_OK;
+        s_config.last_failed_ota[0] = '\0';
+    } else {
+        err = pb_kv_set_string(h, K_LAST_FAIL_OTA, version);
+        if (err == PB_KV_OK) {
+            copy_default(s_config.last_failed_ota,
+                         sizeof(s_config.last_failed_ota), version);
+        }
+    }
+    if (err == PB_KV_OK) err = pb_kv_commit(h);
+    pb_kv_close(h);
+    if (err != PB_KV_OK) {
+        pb_log_err(TAG, "config_set_last_failed_ota: %s", pb_kv_err_name(err));
+    }
+    return err;
+}
+
+// --- Updating -------------------------------------------------------
+
+static int set_str_if(pb_kv_t *h, const char *key, const char *val,
+                      char *cache, size_t cap)
+{
+    if (!val) return PB_KV_OK;
+    int err = pb_kv_set_string(h, key, val);
+    if (err == PB_KV_OK) copy_default(cache, cap, val);
+    return err;
+}
+
+static int set_int_if(pb_kv_t *h, const char *key, int val, int *cache)
+{
+    if (val == 0) return PB_KV_OK;
+    int err = pb_kv_set_i32(h, key, val);
+    if (err == PB_KV_OK) *cache = val;
+    return err;
+}
+
+// Like set_int_if, but the caller decides explicitly via `has_value`
+// whether to write — for fields where 0 is a meaningful value (e.g.
+// "range-block disabled") and can't share the "0 = unchanged" shortcut.
+static int set_int_explicit(pb_kv_t *h, const char *key,
+                            bool has_value, int val, int *cache)
+{
+    if (!has_value) return PB_KV_OK;
+    int err = pb_kv_set_i32(h, key, val);
+    if (err == PB_KV_OK) *cache = val;
+    return err;
+}
+
+int config_erase(void)
+{
+    pb_kv_t *h;
+    int err = pb_kv_open(NS, true, &h);
+    if (err != PB_KV_OK) return err;
+    err = pb_kv_erase_all(h);
+    if (err == PB_KV_OK) err = pb_kv_commit(h);
+    pb_kv_close(h);
+    pb_log_info(TAG, "config_erase: %s", pb_kv_err_name(err));
+    return err;
+}
+
+void config_dongle_username(char *out, size_t cap)
+{
+    if (!out || cap == 0) return;
+    strncpy(out, "phoneblock-dongle", cap - 1);
+    out[cap - 1] = '\0';
+}
+
+int config_update(const config_update_t *u)
+{
+    pb_kv_t *h;
+    int err = pb_kv_open(NS, true, &h);
+    if (err != PB_KV_OK) return err;
+
+    err = set_str_if(h, K_SIP_HOST, u->sip_host,
+                     s_config.sip_host, sizeof(s_config.sip_host));
+    if (err == PB_KV_OK) err = set_int_explicit(h, K_SIP_PORT, u->has_sip_port,
+                                              u->sip_port, &s_config.sip_port);
+    if (err == PB_KV_OK) err = set_int_explicit(h, K_SIP_LPORT, u->has_sip_local_port,
+                                              u->sip_local_port, &s_config.sip_local_port);
+    if (err == PB_KV_OK) err = set_int_explicit(h, K_RTP_PORT, u->has_rtp_port,
+                                              u->rtp_port, &s_config.rtp_port);
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_USER, u->sip_user,
+                                        s_config.sip_user, sizeof(s_config.sip_user));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_PASS, u->sip_pass,
+                                        s_config.sip_pass, sizeof(s_config.sip_pass));
+    if (err == PB_KV_OK) err = set_int_if(h, K_SIP_EXPIRES, u->sip_expires, &s_config.sip_expires);
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_INT_NUM, u->sip_internal_number,
+                                        s_config.sip_int_num, sizeof(s_config.sip_int_num));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_TRANSP, u->sip_transport,
+                                        s_config.sip_transp, sizeof(s_config.sip_transp));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_AUTHUSER, u->sip_auth_user,
+                                        s_config.sip_authuser, sizeof(s_config.sip_authuser));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_OUTBOUND, u->sip_outbound,
+                                        s_config.sip_outbound, sizeof(s_config.sip_outbound));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_REALM, u->sip_realm,
+                                        s_config.sip_realm, sizeof(s_config.sip_realm));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_SRTP, u->sip_srtp,
+                                        s_config.sip_srtp, sizeof(s_config.sip_srtp));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SIP_STUN, u->sip_stun,
+                                        s_config.sip_stun, sizeof(s_config.sip_stun));
+    if (err == PB_KV_OK) err = set_str_if(h, K_FB_APP_USER, u->fritzbox_app_user,
+                                        s_config.fb_app_user, sizeof(s_config.fb_app_user));
+    if (err == PB_KV_OK) err = set_str_if(h, K_FB_APP_PASS, u->fritzbox_app_pass,
+                                        s_config.fb_app_pass, sizeof(s_config.fb_app_pass));
+    if (err == PB_KV_OK) err = set_str_if(h, K_FB_PB_ID, u->fritzbox_phonebook,
+                                        s_config.fb_pb_id, sizeof(s_config.fb_pb_id));
+    if (err == PB_KV_OK) err = set_str_if(h, K_FB_PB_NAME, u->fritzbox_phonebook_name,
+                                        s_config.fb_pb_name, sizeof(s_config.fb_pb_name));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SYNC_ENABLED, u->sync_enabled,
+                                        s_config.sync_enabled, sizeof(s_config.sync_enabled));
+    if (err == PB_KV_OK) err = set_str_if(h, K_LOG_KNOWN, u->log_known_calls,
+                                        s_config.log_known, sizeof(s_config.log_known));
+    if (err == PB_KV_OK) err = set_str_if(h, K_LOG_INFO, u->log_info,
+                                        s_config.log_info, sizeof(s_config.log_info));
+    if (err == PB_KV_OK) err = set_str_if(h, K_LED_QUIET, u->led_quiet,
+                                        s_config.led_quiet, sizeof(s_config.led_quiet));
+    if (err == PB_KV_OK) err = set_str_if(h, K_LCD_FLIP, u->lcd_flip,
+                                        s_config.lcd_flip, sizeof(s_config.lcd_flip));
+    if (err == PB_KV_OK) err = set_str_if(h, K_AUTH_ENABLED, u->auth_enabled,
+                                        s_config.auth_enabled, sizeof(s_config.auth_enabled));
+    if (err == PB_KV_OK) err = set_str_if(h, K_AUTH_USER, u->auth_user,
+                                        s_config.auth_user, sizeof(s_config.auth_user));
+    if (err == PB_KV_OK) err = set_str_if(h, K_AUTH_PERSIST, u->auth_persist,
+                                        s_config.auth_persist, sizeof(s_config.auth_persist));
+    if (err == PB_KV_OK) err = set_str_if(h, K_AUTO_UPDATE, u->auto_update,
+                                        s_config.auto_update, sizeof(s_config.auto_update));
+    if (err == PB_KV_OK) err = set_str_if(h, K_OTA_CHANNEL, u->ota_channel,
+                                        s_config.ota_channel, sizeof(s_config.ota_channel));
+    if (err == PB_KV_OK) err = set_str_if(h, K_CRASH_REPORT, u->crash_report,
+                                        s_config.crash_report, sizeof(s_config.crash_report));
+    if (err == PB_KV_OK) err = set_str_if(h, K_ACCEPT_TEST, u->accept_test_calls,
+                                        s_config.accept_test, sizeof(s_config.accept_test));
+    if (err == PB_KV_OK) err = set_str_if(h, K_BL_WILDCARDS, u->blocklist_wildcards,
+                                        s_config.bl_wildcards, sizeof(s_config.bl_wildcards));
+    if (err == PB_KV_OK) err = set_str_if(h, K_BL_ENABLED, u->blocklist_enabled,
+                                        s_config.bl_enabled, sizeof(s_config.bl_enabled));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SPAM_NAMES, u->spam_names,
+                                        s_config.spam_names, sizeof(s_config.spam_names));
+    if (err == PB_KV_OK) err = set_str_if(h, K_PB_URL, u->phoneblock_base_url,
+                                        s_config.pb_base_url, sizeof(s_config.pb_base_url));
+    if (err == PB_KV_OK) err = set_str_if(h, K_PB_TOKEN, u->phoneblock_token,
+                                        s_config.pb_token, sizeof(s_config.pb_token));
+    if (err == PB_KV_OK) err = set_int_if(h, K_MIN_DIRECT, u->min_direct_votes,
+                                        &s_config.min_direct_votes);
+    if (err == PB_KV_OK) err = set_int_explicit(h, K_MIN_RANGE,
+                                              u->has_min_range_votes,
+                                              u->min_range_votes,
+                                              &s_config.min_range_votes);
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_HOST, u->smtp_host,
+                                        s_config.smtp_host, sizeof(s_config.smtp_host));
+    if (err == PB_KV_OK) err = set_int_explicit(h, K_SMTP_PORT, u->has_smtp_port,
+                                              u->smtp_port, &s_config.smtp_port);
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_SECURITY, u->smtp_security,
+                                        s_config.smtp_security, sizeof(s_config.smtp_security));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_USER, u->smtp_user,
+                                        s_config.smtp_user, sizeof(s_config.smtp_user));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_PASS, u->smtp_pass,
+                                        s_config.smtp_pass, sizeof(s_config.smtp_pass));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_FROM, u->smtp_from,
+                                        s_config.smtp_from, sizeof(s_config.smtp_from));
+    if (err == PB_KV_OK) err = set_str_if(h, K_SMTP_TO, u->smtp_to,
+                                        s_config.smtp_to, sizeof(s_config.smtp_to));
+    if (err == PB_KV_OK) err = set_str_if(h, K_MAIL_ON_ERROR, u->mail_on_error,
+                                        s_config.mail_on_error, sizeof(s_config.mail_on_error));
+    if (err == PB_KV_OK) err = set_str_if(h, K_MAIL_ON_SPAM, u->mail_on_spam,
+                                        s_config.mail_on_spam, sizeof(s_config.mail_on_spam));
+    if (err == PB_KV_OK) err = set_str_if(h, K_MAIL_ON_UPDATE, u->mail_on_update,
+                                        s_config.mail_on_update, sizeof(s_config.mail_on_update));
+    if (err == PB_KV_OK) err = set_str_if(h, K_TIMEZONE, u->timezone,
+                                        s_config.timezone, sizeof(s_config.timezone));
+    if (err == PB_KV_OK) err = set_str_if(h, K_UI_LANG, u->ui_lang,
+                                        s_config.ui_lang, sizeof(s_config.ui_lang));
+    if (err == PB_KV_OK) err = set_str_if(h, K_DIAL_PREFIX, u->dial_prefix,
+                                        s_config.dial_prefix, sizeof(s_config.dial_prefix));
+
+    if (err == PB_KV_OK) err = pb_kv_commit(h);
+    pb_kv_close(h);
+    if (err != PB_KV_OK) {
+        pb_log_err(TAG, "config_update: %s", pb_kv_err_name(err));
+    } else {
+        pb_log_info(TAG, "config_update: committed");
+    }
+    return err;
+}

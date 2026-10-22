@@ -1,0 +1,100 @@
+// Daily download of the binary blocklist files from the server.
+//
+// Two SPIFFS files are kept:
+//   /spiffs/community.bin   — community list (shared across users with the
+//                             same minVotes; depends only on that setting)
+//   /spiffs/personal.bin    — user's personal black/white overrides
+//
+// The download runs once per day from the shared scheduler task (see
+// scheduler.c) and can be triggered on demand from the web UI via
+// blocklist_sync_trigger_now(). Each file is streamed to a `.tmp`
+// sibling, then atomic-renamed into place — same pattern announcement.c
+// uses. A lookup that races with the rename either still sees the old
+// file (open during rename) or the new file (open after rename); it
+// never sees a half-written one.
+//
+// The dongle's "wildcards on/off" preference is evaluated locally at
+// lookup time, not at sync time. The community file always carries the
+// prefix section; the user's setting only decides whether to consult it.
+#pragma once
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "blocklist_lookup.h"
+
+#ifdef ESP_PLATFORM
+#define BLOCKLIST_COMMUNITY_PATH "/spiffs/community.bin"
+#define BLOCKLIST_PERSONAL_PATH  "/spiffs/personal.bin"
+#else
+#ifndef PHONEBLOCK_DATA_DIR
+#define PHONEBLOCK_DATA_DIR "/var/lib/phoneblock"
+#endif
+#define BLOCKLIST_COMMUNITY_PATH PHONEBLOCK_DATA_DIR "/community.bin"
+#define BLOCKLIST_PERSONAL_PATH  PHONEBLOCK_DATA_DIR "/personal.bin"
+#endif
+
+// Initialise the sync status mutex and prime the cached file sizes.
+// Called once by scheduler_start() before the scheduler task (or any
+// web-UI snapshot) can run; no-op on duplicate calls.
+void blocklist_sync_init(void);
+
+// Perform one download run (community + personal). Invoked by the shared
+// scheduler task, never inline on a caller's thread. Skips silently when
+// no PhoneBlock token is configured yet.
+void blocklist_sync_run(void);
+
+// Ask the scheduler to run a download as soon as possible. Returns false
+// if the scheduler is not running or a run is already in progress.
+bool blocklist_sync_trigger_now(void);
+
+// Deletes the cached community list to make room for a file that has
+// precedence on the shared storage partition (storage.c,
+// storage_make_room()). Lookups fall back to the live API until the next
+// daily sync downloads a list sized for what is left. Returns false if there
+// was no community file.
+bool blocklist_sync_evict_community(void);
+
+// Combined verdict using the user's personal list first, then the
+// community list.
+//
+// `community_wildcards` is the user's "Wildcard-Sperren auswerten"
+// preference, which is documented as being about ranges *the community*
+// reports as spam — so it gates the prefix-section search of the community
+// list only. The personal list's prefix section is always consulted: those
+// prefixes are rules the user entered themselves on phoneblock.net, and
+// opting out of the community's range judgement is not opting out of one's
+// own (#516).
+//
+// Returns BLOCKLIST_UNKNOWN when neither file is available or when the
+// query matches no entry. The caller decides the UNKNOWN-vs-LEGIT
+// default policy.
+blocklist_verdict_t blocklist_sync_check(const char *digits,
+                                         bool community_wildcards);
+
+// As blocklist_sync_check(), but also reports where and how the hit was
+// found so the caller can label it precisely:
+//   *wildcard_out → true if the match was a range/prefix entry (vs exact).
+//   *personal_out → true if the hit came from the personal list (vs the
+//                   community list); i.e. a black/white override the user
+//                   set themselves.
+// Both are set to false on a miss. Either out-pointer may be NULL.
+blocklist_verdict_t blocklist_sync_check_ex(const char *digits,
+                                            bool community_wildcards,
+                                            bool *wildcard_out,
+                                            bool *personal_out);
+
+// Status snapshot for the dashboard.
+typedef struct {
+    bool    have_community;
+    bool    have_personal;
+    int     community_size;     // total records (exact + prefix)
+    int     personal_size;
+    bool    ever_ran;           // at least one attempt since boot
+    bool    last_ok;            // last attempt finished without error
+    bool    running;            // a sync is in progress
+    int64_t last_at_us;         // esp_timer when the last attempt finished
+    char    last_error[64];
+} blocklist_sync_status_t;
+
+void blocklist_sync_snapshot(blocklist_sync_status_t *out);

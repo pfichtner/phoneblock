@@ -1,0 +1,297 @@
+#include "stats.h"
+
+#include <string.h>
+
+#include "platform.h"
+
+// Must be last: bans unsafe string APIs for the rest of this file.
+#include "banned_apis.h"
+
+// All mutable state lives here and is guarded by s_mutex. Callers
+// either record an event (briefly lock, mutate, unlock) or take a
+// snapshot (briefly lock, memcpy, unlock). Snapshots mean the web
+// layer never holds the mutex while talking to its HTTP client.
+
+static pb_mutex_t *s_mutex;
+
+static stats_counters_t s_counters;
+
+// Ring buffers: s_head points at the next slot to be written, so the
+// newest entry is at (s_head - 1) mod N, the oldest at s_head if
+// s_full, else slot 0.
+static stats_call_t  s_calls[STATS_MAX_CALLS];
+static int           s_calls_head;
+static int           s_calls_count;
+
+static stats_error_t s_errors[STATS_MAX_ERRORS];
+static int           s_errors_head;
+static int           s_errors_count;
+
+static void lock(void)   { pb_mutex_lock(s_mutex); }
+static void unlock(void) { pb_mutex_unlock(s_mutex); }
+
+void stats_setup(void)
+{
+    s_mutex = pb_mutex_create();
+    memset(&s_counters, 0, sizeof(s_counters));
+    memset(s_calls, 0, sizeof(s_calls));
+    memset(s_errors, 0, sizeof(s_errors));
+    s_calls_head = s_calls_count = 0;
+    s_errors_head = s_errors_count = 0;
+}
+
+// --- Event hooks ----------------------------------------------------
+
+static void copy_trim(char *dst, size_t cap, const char *src)
+{
+    if (!src) { dst[0] = '\0'; return; }
+    size_t n = strnlen(src, cap - 1);
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void bump_counters(verdict_t verdict)
+{
+    s_counters.total_calls++;
+    switch (verdict) {
+        case VERDICT_SPAM:       s_counters.spam_blocked++; break;
+        case VERDICT_LEGITIMATE: s_counters.legitimate++;   break;
+        case VERDICT_ERROR:      s_counters.errors++;       break;
+    }
+}
+
+void stats_record_call(const char *number, const char *display, verdict_t verdict)
+{
+    // Verdict-only entries are phone-book matches (legit) or internal
+    // errors — neither carries a community signal. Map the action verdict
+    // onto its log characterisation: a phone-book hit is "legitim", not
+    // merely "unbekannt".
+    stats_record_call_assessed(number, display, verdict,
+                               (verdict == VERDICT_SPAM)  ? PB_ASSESS_SPAM
+                             : (verdict == VERDICT_ERROR) ? PB_ASSESS_ERROR
+                             :                              PB_ASSESS_LEGITIMATE);
+}
+
+void stats_record_call_assessed(const char *number, const char *display,
+                                verdict_t verdict, pb_assessment_t assessment)
+{
+    lock();
+
+    stats_call_t *slot = &s_calls[s_calls_head];
+    memset(slot, 0, sizeof(*slot));
+    slot->at_us   = (int64_t)pb_monotonic_us();
+    slot->verdict = verdict;
+    slot->assessment = assessment;
+    copy_trim(slot->number,  sizeof(slot->number),  number);
+    copy_trim(slot->display, sizeof(slot->display), display);
+
+    s_calls_head = (s_calls_head + 1) % STATS_MAX_CALLS;
+    if (s_calls_count < STATS_MAX_CALLS) s_calls_count++;
+
+    if (assessment != PB_ASSESS_TEST) bump_counters(verdict);
+
+    unlock();
+}
+
+void stats_record_call_checked(const char *number, const char *display,
+                               const pb_check_result_t *result)
+{
+    lock();
+
+    stats_call_t *slot = &s_calls[s_calls_head];
+    memset(slot, 0, sizeof(*slot));
+    slot->at_us     = (int64_t)pb_monotonic_us();
+    slot->verdict      = result->verdict;
+    slot->assessment   = result->assessment;
+    slot->direct_votes = result->direct_votes;
+    slot->range_votes  = result->range_votes;
+    slot->wildcard     = result->wildcard;
+    copy_trim(slot->number,   sizeof(slot->number),   number);
+    copy_trim(slot->display,  sizeof(slot->display),  display);
+    copy_trim(slot->label,    sizeof(slot->label),    result->label);
+    copy_trim(slot->location, sizeof(slot->location), result->location);
+
+    s_calls_head = (s_calls_head + 1) % STATS_MAX_CALLS;
+    if (s_calls_count < STATS_MAX_CALLS) s_calls_count++;
+
+    bump_counters(result->verdict);
+
+    unlock();
+}
+
+void stats_record_call_counters_only(verdict_t verdict)
+{
+    lock();
+    bump_counters(verdict);
+    unlock();
+}
+
+void stats_record_error(int level, const char *tag, const char *message)
+{
+    lock();
+
+    stats_error_t *slot = &s_errors[s_errors_head];
+    slot->at_us = (int64_t)pb_monotonic_us();
+    slot->level = level;
+    copy_trim(slot->tag,     sizeof(slot->tag),     tag);
+    copy_trim(slot->message, sizeof(slot->message), message);
+
+    s_errors_head = (s_errors_head + 1) % STATS_MAX_ERRORS;
+    if (s_errors_count < STATS_MAX_ERRORS) s_errors_count++;
+
+    unlock();
+}
+
+void stats_record_sip_state(bool registered)
+{
+    lock();
+    if (registered && !s_counters.sip_registered) {
+        s_counters.sip_registered_since_us = (int64_t)pb_monotonic_us();
+    }
+    s_counters.sip_registered = registered;
+    unlock();
+}
+
+void stats_record_api_phases(const api_phases_t *p)
+{
+    lock();
+    s_counters.last_api_phases     = *p;
+    s_counters.last_api_duration_us = p->total_us;
+    unlock();
+}
+
+// --- Snapshots ------------------------------------------------------
+
+void stats_snapshot_counters(stats_counters_t *out)
+{
+    lock();
+    *out = s_counters;
+    unlock();
+}
+
+// Iterate the ring buffer from newest to oldest.
+static int snapshot_ring(const void *buffer, size_t slot_size,
+                         int head, int count, int ring_n,
+                         void *out, int max)
+{
+    int n = count < max ? count : max;
+    for (int i = 0; i < n; i++) {
+        int src = (head - 1 - i + ring_n) % ring_n;
+        memcpy((char *)out + (size_t)i * slot_size,
+               (const char *)buffer + (size_t)src * slot_size,
+               slot_size);
+    }
+    return n;
+}
+
+int stats_snapshot_calls(stats_call_t *out, int max)
+{
+    lock();
+    int n = snapshot_ring(s_calls, sizeof(*s_calls),
+                          s_calls_head, s_calls_count, STATS_MAX_CALLS,
+                          out, max);
+    unlock();
+    return n;
+}
+
+int stats_snapshot_errors(stats_error_t *out, int max)
+{
+    lock();
+    int n = snapshot_ring(s_errors, sizeof(*s_errors),
+                          s_errors_head, s_errors_count, STATS_MAX_ERRORS,
+                          out, max);
+    unlock();
+    return n;
+}
+
+void stats_clear_errors(void)
+{
+    lock();
+    s_errors_head = 0;
+    s_errors_count = 0;
+    unlock();
+}
+
+// Both updaters walk the whole ring rather than only the newest match: a
+// number that called twice appears twice, and leaving the older row stale
+// would read as if the change had only half worked.
+static int update_calls(const char *number, const char *display,
+                        const pb_assessment_t *assessment)
+{
+    if (!number || !*number) return 0;
+    int n = 0;
+    lock();
+    for (int i = 0; i < s_calls_count; i++) {
+        stats_call_t *c = &s_calls[i];
+        if (strcmp(c->number, number) != 0) continue;
+        if (display) {
+            // Never overwrite a name the Fritz!Box already delivered.
+            if (c->display[0]) continue;
+            strncpy(c->display, display, sizeof(c->display) - 1);
+            c->display[sizeof(c->display) - 1] = '\0';
+        }
+        if (assessment) {
+            c->assessment   = *assessment;
+            c->wildcard     = false;
+            c->direct_votes = 0;
+            c->range_votes  = 0;
+        }
+        n++;
+    }
+    unlock();
+    return n;
+}
+
+int stats_set_display(const char *number, const char *display)
+{
+    if (!display || !*display) return 0;
+    return update_calls(number, display, NULL);
+}
+
+int stats_set_assessment(const char *number, pb_assessment_t assessment)
+{
+    return update_calls(number, NULL, &assessment);
+}
+
+bool stats_assessment_for_number(const char *number, pb_assessment_t *out)
+{
+    if (!number || !*number || !out) return false;
+    bool found = false;
+    lock();
+    // Newest first: s_calls_head - 1 is the most recent entry.
+    for (int k = 1; k <= s_calls_count && !found; k++) {
+        const stats_call_t *c =
+            &s_calls[(s_calls_head - k + STATS_MAX_CALLS) % STATS_MAX_CALLS];
+        if (strcmp(c->number, number) != 0) continue;
+        *out  = c->assessment;
+        found = true;
+    }
+    unlock();
+    return found;
+}
+
+bool stats_display_for_number(const char *number, char *out, size_t cap)
+{
+    if (!out || cap == 0) return false;
+    out[0] = '\0';
+    if (!number || !*number) return false;
+    bool found = false;
+    lock();
+    for (int i = 0; i < s_calls_count && !found; i++) {
+        if (strcmp(s_calls[i].number, number) != 0) continue;
+        if (!s_calls[i].display[0]) continue;
+        strncpy(out, s_calls[i].display, cap - 1);
+        out[cap - 1] = '\0';
+        found = true;
+    }
+    unlock();
+    return found;
+}
+
+void stats_clear_calls(void)
+{
+    lock();
+    s_calls_head = 0;
+    s_calls_count = 0;
+    unlock();
+}

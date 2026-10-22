@@ -1,0 +1,134 @@
+/*
+ * Copyright (c) 2026 Bernhard Haumacher et al. All Rights Reserved.
+ */
+package de.haumacher.phoneblock.app.api;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
+
+import org.apache.ibatis.session.SqlSession;
+
+import de.haumacher.phoneblock.analysis.NumberAnalyzer;
+import de.haumacher.phoneblock.app.LoginFilter;
+import de.haumacher.phoneblock.db.BlockList;
+import de.haumacher.phoneblock.db.DB;
+import de.haumacher.phoneblock.db.DBService;
+import de.haumacher.phoneblock.db.Signals;
+import de.haumacher.phoneblock.db.SpamReports;
+import de.haumacher.phoneblock.db.Users;
+import de.haumacher.phoneblock.db.settings.AuthToken;
+import de.haumacher.phoneblock.util.ServletUtil;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+/**
+ * Counts calls from already-known SPAM numbers to drive tailored blocklist
+ * selection.
+ *
+ * <p>A client that has just detected an incoming SPAM call — e.g. through the
+ * {@link PrefixCheckServlet k-anonymity lookup} — reports the plaintext number
+ * back so the server can increment {@code NUMBERS.CALLS} and refresh
+ * {@code NUMBERS.LASTPING}. This is intentionally different from
+ * {@link RateServlet /rate}: a rating is submitted at most once per user and
+ * number, whereas a single number can generate many calls, and call activity
+ * is what decides which numbers make it onto space-constrained blocklists
+ * (e.g. Fritz!Box phonebooks).</p>
+ *
+ * <p>Abuse is kept at bay by a single per-user daily quota: a lazy-reset
+ * counter on the {@code USERS} row caps how many reports a user may push
+ * into the global counter per UTC day. It is implemented as one atomic
+ * {@code UPDATE} (see {@link Users#tryConsumeCallReportQuota}) — no periodic
+ * reset job, no aggregate query. Reports beyond the quota are still written
+ * to the per-user call log ({@code CALLERS}) for the user's own activity
+ * history, but do not move the global counter.</p>
+ */
+@WebServlet(urlPatterns = ReportCallServlet.PATTERN)
+public class ReportCallServlet extends HttpServlet {
+
+	/** Servlet path — matches {@link #PATTERN} minus the wildcard tail. */
+	public static final String PATH = "/api/report-call";
+
+	public static final String PATTERN = PATH + "/*";
+
+	/**
+	 * Maximum number of call reports a user may push into the global counter
+	 * per UTC day. Generous for typical spam exposure (even heavily targeted
+	 * users rarely see more than a handful of spam calls per day) while
+	 * leaving abuse from a single account clearly below the legitimate
+	 * baseline of independent reports.
+	 */
+	public static final int DAILY_QUOTA = 20;
+
+	@Override
+	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+		AuthToken auth = LoginFilter.getAuthorization(req);
+		if (auth == null) {
+			ServletUtil.sendAuthenticationRequest(resp);
+			return;
+		}
+
+		String pathInfo = req.getPathInfo();
+		if (pathInfo == null || pathInfo.length() < 2) {
+			ServletUtil.sendMessage(resp, HttpServletResponse.SC_BAD_REQUEST, "Missing phone number in path.");
+			return;
+		}
+
+		String phone = NumberAnalyzer.normalizeNumber(pathInfo.substring(1));
+		if (phone.isEmpty() || phone.contains("*")) {
+			ServletUtil.sendMessage(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid phone number.");
+			return;
+		}
+
+		String dialPrefix = ServletUtil.lookupDialPrefix(req);
+		de.haumacher.phoneblock.app.api.model.PhoneNumer number = NumberAnalyzer.analyze(phone, dialPrefix);
+		if (number == null) {
+			ServletUtil.sendMessage(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid phone number.");
+			return;
+		}
+		String phoneId = NumberAnalyzer.getPhoneId(number);
+
+		// A catch by one of the user's personal prefix wildcards (#377) is reported
+		// with wildcard=true so the server weights it down by the rule's breadth.
+		boolean wildcardTriggered = Boolean.parseBoolean(req.getParameter("wildcard"));
+
+		long now = System.currentTimeMillis();
+		int today = (int) LocalDate.ofInstant(Instant.ofEpochMilli(now), ZoneOffset.UTC).toEpochDay();
+
+		DB db = DBService.getInstance();
+		try (SqlSession session = db.openSession()) {
+			SpamReports reports = session.getMapper(SpamReports.class);
+			Users users = session.getMapper(Users.class);
+
+			long userId = auth.getUserId();
+
+			// Per-day quota is the only abuse guard on this endpoint — each
+			// reported call counts equally, no per-(user, phone) dedup
+			// (that was the old CALLERS / firstFromUser concept, removed in
+			// #342). The shared DB.recordCall path handles the rest.
+			if (users.tryConsumeCallReportQuota(userId, today, DAILY_QUOTA) == 1) {
+				BlockList blockList = session.getMapper(BlockList.class);
+				double weight = 1.0;
+				if (wildcardTriggered) {
+					// Server recomputes the weight from the user's own wildcard list; a
+					// claim without a matching wildcard (stale client state) yields 0.0
+					// and is dropped rather than counted at full weight.
+					weight = db.wildcardReportWeight(blockList, userId, phoneId);
+				}
+				if (weight > 0.0) {
+					// Spam evidence is capped per user inside recordCall; weight scales Heat only.
+					db.recordCall(reports, blockList, userId, number, phoneId, dialPrefix, now, weight);
+				}
+			}
+
+			session.commit();
+		}
+
+		resp.setStatus(HttpServletResponse.SC_NO_CONTENT);
+	}
+
+}

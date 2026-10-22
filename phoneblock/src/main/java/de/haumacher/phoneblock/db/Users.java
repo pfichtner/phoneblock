@@ -12,6 +12,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import de.haumacher.phoneblock.ab.DBAnswerbotInfo;
+import de.haumacher.phoneblock.ab.proto.RetentionPeriod;
 import de.haumacher.phoneblock.db.settings.AuthToken;
 import de.haumacher.phoneblock.db.settings.Contribution;
 
@@ -36,15 +37,53 @@ public interface Users {
 	@Update("update USERS set PWHASH=#{pwhash} where ID=#{userId}")
 	void setPassword(long userId, byte[] pwhash);
 	
-	@Update("update USERS set EMAIL=#{email} where LOGIN=#{login}")
-	void setEmail(String login, String email);
+	/**
+	 * Sets the e-mail address of the given user, unless another account already uses it (#523).
+	 *
+	 * <p>{@code USERS.EMAIL} has no unique index (production holds duplicates), so the check is part
+	 * of the update: an address another account registered after the caller's own check is not
+	 * assigned a second time. The check is correlated with the updated row (H2 caches an uncorrelated
+	 * {@code NOT EXISTS} within a transaction, see {@link BlockList#addPersonalization}).</p>
+	 *
+	 * @param email The canonical e-mail address (see {@link DB#canonicalEMail(String)}).
+	 * @return The number of updated rows: {@code 1} if the address was set, {@code 0} if another
+	 *         account uses it (or the user does not exist).
+	 */
+	@Update("""
+			update USERS set EMAIL=#{email}
+			where LOGIN=#{login}
+			and not exists (
+				select 1 from USERS o where o.EMAIL=#{email} and o.ID<>USERS.ID
+			)
+			""")
+	int setEmail(String login, String email);
+
+	/**
+	 * Creates a new user with the given e-mail address, unless an account with this address already
+	 * exists (#523).
+	 *
+	 * @param email The canonical e-mail address (see {@link DB#canonicalEMail(String)}).
+	 * @return The number of inserted rows: {@code 1} if the user was created, {@code 0} if an
+	 *         account with this e-mail address exists.
+	 *
+	 * @see BlockList#addPersonalization(long, String, byte[], long) Why the check is correlated.
+	 */
+	@Insert("""
+			insert into USERS (LOGIN, DISPLAYNAME, LOCALE, DIAL, PWHASH, REGISTERED, MIN_VOTES, MAX_LENGTH, EMAIL)
+			select #{login}, #{displayName}, #{lang}, #{dial}, #{pwhash}, #{registered}, 4, 2000, v.EMAIL
+			from (values (#{email})) v (EMAIL)
+			where not exists (
+				select 1 from USERS o where o.EMAIL=v.EMAIL
+			)
+			""")
+	int addEmailUser(String login, String displayName, String lang, String dial, byte[] pwhash, long registered, String email);
 	
 	@Update("update USERS set LOCALE=#{lang} where LOGIN=#{login}")
-	void setLocale(String login, String lang);
-	
+	void setLang(String login, String lang);
+
 	@Select("select LOCALE from USERS where LOGIN=#{login}")
-	String getLocale(String login);
-	
+	String getLang(String login);
+
 	@Update("update USERS set DIAL=#{dial} where LOGIN=#{login}")
 	void setDialPrefix(String login, String dial);
 	
@@ -119,13 +158,15 @@ public interface Users {
 
 	@Insert("""
 			insert into TOKENS (
-				USERID, LABEL, CREATED, PWHASH, 
-				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN, 
+				USERID, LABEL, CREATED, PWHASH,
+				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN,
+				ACCESS_DIAGNOSTICS, ACCESS_ADMIN,
 				LASTACCESS, USERAGENT
 			)
 			values (
-				#{userId}, #{label}, #{created}, #{pwHash}, 
+				#{userId}, #{label}, #{created}, #{pwHash},
 				#{implicit}, #{accessQuery}, #{accessDownload}, #{accessCarddav},#{accessRate},#{accessLogin},
+				#{accessDiagnostics}, #{accessAdmin},
 				#{lastAccess}, #{userAgent}
 			)
 			""")
@@ -165,6 +206,16 @@ public interface Users {
 			where USERID=#{userId} and ID=#{id}
 			""")
 	void deleteAuthToken(long userId, long id);
+
+	/**
+	 * Rename an auth token for a given user. Note: The user ID is required to prevent a user from renaming tokens of other users. This call is done from the settings servlet.
+	 */
+	@Update("""
+			update TOKENS
+			set LABEL=#{label}
+			where USERID=#{userId} and ID=#{id}
+			""")
+	void renameAuthToken(long userId, long id, String label);
 	
 	@Delete("""
 			delete from TOKENS
@@ -196,9 +247,10 @@ public interface Users {
 	
 	@Select("""
 			select
-				ID, 
-				USERID, LABEL, CREATED, PWHASH, 
-				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN, 
+				ID,
+				USERID, LABEL, CREATED, PWHASH,
+				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN,
+				ACCESS_DIAGNOSTICS, ACCESS_ADMIN,
 				LASTACCESS, USERAGENT
 			from TOKENS
 			where ID=#{id}
@@ -207,9 +259,10 @@ public interface Users {
 	
 	@Select("""
 			select
-				ID, 
-				USERID, LABEL, CREATED, PWHASH, 
-				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN, 
+				ID,
+				USERID, LABEL, CREATED, PWHASH,
+				IMPLICIT, ACCESS_QUERY, ACCESS_DOWNLOAD, ACCESS_CARDDAV, ACCESS_RATE, ACCESS_LOGIN,
+				ACCESS_DIAGNOSTICS, ACCESS_ADMIN,
 				LASTACCESS, USERAGENT
 			from TOKENS
 			where USERID=#{userId} and not IMPLICIT
@@ -243,11 +296,27 @@ public interface Users {
 	@Select("select LOGIN from USERS where GOOGLEID=#{googleId}")
 	String getGoogleLogin(String googleId);
 	
-	/** 
-	 * Retrieves the user ID for the user with the given e-mail.
+	/**
+	 * Retrieves the login of the account with the given e-mail.
+	 *
+	 * <p>{@code USERS.EMAIL} is not unique (#523). If several accounts share the address, the most
+	 * recently used one is chosen ({@code LASTACCESS}), on a tie the oldest one (lowest {@code ID}),
+	 * so that a person is always logged into the same account.</p>
+	 *
+	 * @param email The canonical e-mail address (see {@link DB#canonicalEMail(String)}).
+	 * @return The login, or {@code null} if no account uses this address.
 	 */
-	@Select("select LOGIN from USERS where EMAIL=#{email}")
+	@Select("select LOGIN from USERS where EMAIL=#{email} order by LASTACCESS desc, ID asc limit 1")
 	String getEmailLogin(String email);
+
+	/**
+	 * Checks if an email address is already in use by any user.
+	 *
+	 * @param email The canonical e-mail address to check (see {@link DB#canonicalEMail(String)}).
+	 * @return The number of users with this email address (0 if not in use, >0 if already in use).
+	 */
+	@Select("select count(1) from USERS where EMAIL=#{email}")
+	int isEmailInUse(String email);
 
 	@Select("select ID, LOGIN, DISPLAYNAME, LOCALE, DIAL, NATIONAL, EMAIL, MIN_VOTES, MAX_LENGTH, WILDCARDS, LASTACCESS, CREDIT from USERS where LOGIN=#{login}")
 	DBUserSettings getSettingsRaw(String login);
@@ -318,20 +387,24 @@ public interface Users {
 	@Update("update USERS set LASTACCESS=#{lastAccess}, USERAGENT=#{userAgent}, NOTIFIED=false where LOGIN=#{login}")
 	void setLastAccess(String login, long lastAccess, String userAgent);
 	
-	@Select("select TIMESTAMP, LASTID from CALLREPORT where USERID=#{userId}")
-	DBReportInfo getReportInfo(long userId);
-	
-	@Update("update CALLREPORT set TIMESTAMP=#{timestamp}, LASTID=#{lastId}, LASTACCESS=#{now} where USERID=#{userId}")
-	int updateReportInfo(long userId, String timestamp, String lastId, long now);
-	
-	@Insert("insert into CALLREPORT (USERID, TIMESTAMP, LASTID, LASTACCESS) values (#{userId}, #{timestamp}, #{lastId}, #{now})")
-	void createReportInfo(long userId, String timestamp, String lastId, long now);
-	
-	@Insert("insert into CALLERS (USERID, PHONE, CALLS, LASTUPDATE) values (#{userId}, #{phone}, 1, #{now})")
-	void insertCaller(long userId, String phone, long now);
-	
-	@Update("update CALLERS set CALLS=CALLS + 1, LASTUPDATE=#{now} where USERID=#{userId} and PHONE=#{phone}")
-	int addCall(long userId, String phone, long now);
+	/**
+	 * Atomic per-day call-report quota check with lazy reset.
+	 *
+	 * <p>If the user's stored {@code FLAG_DAY} does not yet match {@code today}, the
+	 * counter is reset to 1 and the new day is recorded. Otherwise the counter is
+	 * incremented, but only while it is strictly less than {@code quota}. The method
+	 * returns the number of affected rows: {@code 1} if the caller is within the
+	 * quota and may contribute the current report to the global counters,
+	 * {@code 0} if the daily quota for this user is already exhausted.</p>
+	 */
+	@Update("""
+			update USERS
+			set FLAG_DAY = #{today},
+				FLAG_COUNT = case when FLAG_DAY = #{today} then FLAG_COUNT + 1 else 1 end
+			where ID = #{userId}
+				and (FLAG_DAY <> #{today} or FLAG_COUNT < #{quota})
+			""")
+	int tryConsumeCallReportQuota(long userId, int today, int quota);
 
 	@Select("select ABID, USERID, CREATED, UPDATED, DYNDNS_USER, DYNDNS_PASSWD, IP4, IP6 from ANSWERBOT_DYNDNS where DYNDNS_USER=#{dynDnsUser}")
 	DBAnswerBotDynDns getDynDns(String dynDnsUser);
@@ -352,14 +425,14 @@ public interface Users {
 	void updateDynDns(long abId, String ip4, String ip6, long updated);
 	
 	@Select("""
-			select 
-				s.ID, s.USERID, 
-				s.UPDATED, s.LAST_SUCCESS, 
-				s.REGISTERED, s.REGISTER_MSG, s.HOST, s.PREFER_V4, d.IP4, d.IP6, 
+			select
+				s.ID, s.USERID,
+				s.UPDATED, s.LAST_SUCCESS,
+				s.REGISTERED, s.REGISTER_MSG, s.HOST, s.PREFER_V4, d.IP4, d.IP6,
 				s.REGISTRAR, s.REALM, s.USERNAME, s.PASSWD,
-				s.MIN_VOTES, s.WILDCARDS 
-			from ANSWERBOT_SIP s  
-			left outer join ANSWERBOT_DYNDNS d on d.ABID=s.ID  
+				s.MIN_VOTES, s.WILDCARDS, s.ACCEPT_LOCAL
+			from ANSWERBOT_SIP s
+			left outer join ANSWERBOT_DYNDNS d on d.ABID=s.ID
 			where s.ENABLED = true
 			""")
 	List<DBAnswerBotSip> getEnabledAnswerBots();
@@ -381,60 +454,83 @@ public interface Users {
 	long getAnswerBotUserId(String sipUser);
 
 	@Select("""
-			select 
-				s.ID, s.USERID, 
-				s.UPDATED, s.LAST_SUCCESS, 
-				s.REGISTERED, s.REGISTER_MSG, s.HOST, s.PREFER_V4, d.IP4, d.IP6, 
+			select
+				s.ID, s.USERID,
+				s.UPDATED, s.LAST_SUCCESS,
+				s.REGISTERED, s.REGISTER_MSG, s.HOST, s.PREFER_V4, d.IP4, d.IP6,
 				s.REGISTRAR, s.REALM, s.USERNAME, s.PASSWD,
-				s.MIN_VOTES, s.WILDCARDS 
-			from ANSWERBOT_SIP s  
-			left outer join ANSWERBOT_DYNDNS d on d.ABID=s.ID  
+				s.MIN_VOTES, s.WILDCARDS, s.ACCEPT_LOCAL
+			from ANSWERBOT_SIP s
+			left outer join ANSWERBOT_DYNDNS d on d.ABID=s.ID
 			where s.USERNAME = #{userName}
 			""")
 	DBAnswerBotSip getAnswerBotBySipUser(String userName);
 
 	@Select("""
-			select 
-				s.ID, s.USERID, 
-				s.ENABLED, s.PREFER_V4, s.MIN_VOTES, s.WILDCARDS, 
-				s.REGISTRAR, s.HOST, d.IP4, d.IP6, s.REALM, 
-				s.REGISTERED, s.REGISTER_MSG, 
-				s.NEW_CALLS, s.CALLS_ACCEPTED, s.TALK_TIME, 
-				s.USERNAME, s.PASSWD, 
-				d.DYNDNS_USER, d.DYNDNS_PASSWD 
-			from ANSWERBOT_SIP s  
-			left outer join ANSWERBOT_DYNDNS d 
-			on d.ABID=s.ID  
+			select
+				s.ID, s.USERID,
+				s.ENABLED, s.PREFER_V4, s.MIN_VOTES, s.WILDCARDS, s.ACCEPT_LOCAL,
+				s.REGISTRAR, s.HOST, d.IP4, d.IP6, s.REALM,
+				s.REGISTERED, s.REGISTER_MSG,
+				s.NEW_CALLS, s.CALLS_ACCEPTED, s.TALK_TIME,
+				s.USERNAME, s.PASSWD,
+				s.RETENTION_PERIOD,
+				d.DYNDNS_USER, d.DYNDNS_PASSWD
+			from ANSWERBOT_SIP s
+			left outer join ANSWERBOT_DYNDNS d
+			on d.ABID=s.ID
 			where s.USERID= #{userId}
 			""")
 	List<DBAnswerbotInfo> getAnswerBots(long userId);
 	
 	@Select("""
-			select 
-				s.ID, s.USERID, 
-				s.ENABLED, s.PREFER_V4, s.MIN_VOTES, s.WILDCARDS, 
-				s.REGISTRAR, s.HOST, d.IP4, d.IP6, s.REALM, 
-				s.REGISTERED, s.REGISTER_MSG, 
-				s.NEW_CALLS, s.CALLS_ACCEPTED, s.TALK_TIME, 
-				s.USERNAME, s.PASSWD, 
-				d.DYNDNS_USER, d.DYNDNS_PASSWD 
-			from ANSWERBOT_SIP s  
-			left outer join ANSWERBOT_DYNDNS d 
-			on d.ABID=s.ID  
+			select
+				s.ID, s.USERID,
+				s.ENABLED, s.PREFER_V4, s.MIN_VOTES, s.WILDCARDS, s.ACCEPT_LOCAL,
+				s.REGISTRAR, s.HOST, d.IP4, d.IP6, s.REALM,
+				s.REGISTERED, s.REGISTER_MSG,
+				s.NEW_CALLS, s.CALLS_ACCEPTED, s.TALK_TIME,
+				s.USERNAME, s.PASSWD,
+				s.RETENTION_PERIOD,
+				d.DYNDNS_USER, d.DYNDNS_PASSWD
+			from ANSWERBOT_SIP s
+			left outer join ANSWERBOT_DYNDNS d
+			on d.ABID=s.ID
 			where s.ID= #{id}
 			""")
 	DBAnswerbotInfo getAnswerBot(long id);
 	
+	/** 
+	 * Gets all answerbots that have retention enabled (period != 'NEVER') for cleanup.
+	 */
+	@Select("""
+			select
+				s.ID, s.USERID,
+				s.ENABLED, s.PREFER_V4, s.MIN_VOTES, s.WILDCARDS, s.ACCEPT_LOCAL,
+				s.REGISTRAR, s.HOST, d.IP4, d.IP6, s.REALM,
+				s.REGISTERED, s.REGISTER_MSG,
+				s.NEW_CALLS, s.CALLS_ACCEPTED, s.TALK_TIME,
+				s.USERNAME, s.PASSWD,
+				s.RETENTION_PERIOD,
+				d.DYNDNS_USER, d.DYNDNS_PASSWD
+			from ANSWERBOT_SIP s
+			left outer join ANSWERBOT_DYNDNS d
+			on d.ABID=s.ID
+			where s.RETENTION_PERIOD != 'NEVER'
+			""")
+	List<DBAnswerbotInfo> getAnswerbotsWithRetention();
+
 	@Update("""
 			update ANSWERBOT_SIP s
 			set
 				s.PREFER_V4=#{preferIPv4},
 				s.MIN_VOTES=#{minVotes},
-				s.WILDCARDS=#{wildcards}
+				s.WILDCARDS=#{wildcards},
+				s.ACCEPT_LOCAL=#{acceptLocal}
 			where
 				s.ID=#{id}
 			""")
-	void updateAnswerbot(long id, boolean preferIPv4, int minVotes, boolean wildcards);
+	void updateAnswerbot(long id, boolean preferIPv4, int minVotes, boolean wildcards, boolean acceptLocal);
 	
 	@Update("update ANSWERBOT_SIP set LAST_SUCCESS=#{lastSuccess}, REGISTERED=#{registered}, REGISTER_MSG=#{message} where ID=#{id}")
 	int updateSipRegistration(long id, boolean registered, String message, long lastSuccess);
@@ -462,8 +558,59 @@ public interface Users {
 
 	@Delete("update ANSWERBOT_SIP set NEW_CALLS=0 where ID=#{abId}")
 	void clearCallCounter(long abId);
+
+	@Select("SELECT CAST(REGISTERED / 86400000 AS BIGINT) AS dayEpoch, COUNT(1) AS cnt "
+		+ "FROM USERS WHERE REGISTERED >= #{since} AND REGISTERED < #{before} "
+		+ "GROUP BY dayEpoch ORDER BY dayEpoch")
+	List<DailyCount> getRegistrationsPerDay(long since, long before);
+
+	@Select("SELECT COUNT(1) FROM USERS WHERE REGISTERED < #{before}")
+	int getUserCountBefore(long before);
+
+	@Select("SELECT CAST(REGISTERED / 86400000 AS BIGINT) AS dayEpoch, DIAL AS dial, COUNT(1) AS cnt "
+		+ "FROM USERS WHERE REGISTERED >= #{since} AND REGISTERED < #{before} "
+		+ "GROUP BY dayEpoch, dial ORDER BY dayEpoch, dial")
+	List<DailyCount> getRegistrationsPerDayByDial(long since, long before);
+
+	@Select("SELECT DIAL AS dial, COUNT(1) AS cnt FROM USERS WHERE REGISTERED < #{before} GROUP BY dial")
+	List<DailyCount> getUserCountBeforeByDial(long before);
+
+	@Select("SELECT CAST(CREATED / 86400000 AS BIGINT) AS dayEpoch, "
+		+ "CASE WHEN LOCATE('/', USERAGENT) > 0 THEN SUBSTRING(USERAGENT, 1, LOCATE('/', USERAGENT) - 1) ELSE USERAGENT END AS dial, "
+		+ "COUNT(1) AS cnt "
+		+ "FROM TOKENS WHERE NOT IMPLICIT AND CREATED >= #{since} AND CREATED < #{before} "
+		+ "GROUP BY dayEpoch, dial ORDER BY dayEpoch, dial")
+	List<DailyCount> getTokenCreationsPerDayByAgent(long since, long before);
+
+	@Select("SELECT CASE WHEN LOCATE('/', USERAGENT) > 0 THEN SUBSTRING(USERAGENT, 1, LOCATE('/', USERAGENT) - 1) ELSE USERAGENT END AS dial, "
+		+ "COUNT(1) AS cnt FROM TOKENS WHERE NOT IMPLICIT AND CREATED < #{before} AND LASTACCESS >= #{before} GROUP BY dial")
+	List<DailyCount> getTokenCountBeforeByAgent(long before);
+
+	@Select("SELECT CAST(CREATED / 86400000 AS BIGINT) AS dayEpoch, COUNT(1) AS cnt "
+		+ "FROM ANSWERBOT_SIP WHERE REGISTERED = true AND CREATED >= #{since} AND CREATED < #{before} "
+		+ "GROUP BY dayEpoch ORDER BY dayEpoch")
+	List<DailyCount> getRegisteredAnswerbotCreationsPerDay(long since, long before);
+
+	@Select("SELECT COUNT(1) FROM ANSWERBOT_SIP WHERE REGISTERED = true AND CREATED < #{before}")
+	int getRegisteredAnswerbotCountBefore(long before);
 	
 	@Update("update ANSWERBOT_SIP set NEW_CALLS=NEW_CALLS + 1, CALLS_ACCEPTED=CALLS_ACCEPTED + 1, TALK_TIME=TALK_TIME + #{duration} where ID=#{id}")
 	void recordCallSummary(long id, long duration);
+
+	/** 
+	 * Updates the retention policy for an answerbot.
+	 */
+	@Update("update ANSWERBOT_SIP set RETENTION_PERIOD=#{period} where ID=#{id}")
+	void updateRetentionPolicy(long id, RetentionPeriod period);
+	
+	/** 
+	 * Deletes call records older than the specified timestamp for a bot.
+	 * 
+	 * @param abId The answerbot ID
+	 * @param cutoffTime Timestamp before which calls should be deleted
+	 * @return Number of records deleted
+	 */
+	@Delete("delete from ANSWERBOT_CALLS where ABID=#{abId} and STARTED < #{cutoffTime}")
+	int deleteCallsOlderThan(long abId, long cutoffTime);
 
 }

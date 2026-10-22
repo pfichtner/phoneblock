@@ -5,14 +5,24 @@ services:
     container_name: phoneblock
     network_mode: host
     environment:
-      - PHONEBLOCK_API_KEY=<your API key, create one from https://phoneblock.net/phoneblock/settings>
-      - SIP_USER=phoneblock
-      - SIP_PASSWD=<VOIP-phone-password>
+      # The container chowns the bind-mounted ./recordings directory to its
+      # internal user on startup, so recording works out of the box without
+      # any host-side chown. By default that user is UID/GID 999.
+      #
+      # Only set PUID/PGID if you want the recordings to be owned by a
+      # specific host user instead — e.g. so you can browse them via SMB/NFS
+      # under your normal account. Use the numeric UID/GID of that user
+      # (`id -u <name>` / `id -g <name>`).
+      #- PUID=1000
+      #- PGID=1000
+      - PHONEBLOCK_API_KEY=<your API key, create one at https://phoneblock.net/phoneblock/settings>   <==== ADJUST HERE!
+      - SIP_USER=<your VOIP-Phone-User as configured in FRITZ!Box>         <==== ADJUST HERE!
+      - SIP_PASSWD=<your VOIP-phone-password as configured in FRITZ!Box>   <==== ADJUST HERE!
       - VIA_ADDR=auto-configuration
       - VIA_ADDR_V6=auto-configuration
       - HOST_PORT=50060
-      - REGISTRAR=fritz.box
-      - ROUTE=fritz.box;lr
+      - REGISTRAR=<fritz.box or IP-Address of your FRITZ!Box>              <==== ADJUST HERE!
+      - ROUTE=<fritz.box or IP-Address of your FRITZ!Box>;lr               <==== ADJUST HERE!
       - REALM=fritz.box
       - MEDIA=audio 4080 RTP/AVP { 8 PCMA 8000 160 }
       - MIN_SILENCE_TIME=1500
@@ -22,7 +32,24 @@ services:
       - PORT_COUNT=10
       - RECORDINGS=none
       - CONVERSATION=/opt/phoneblock/conversation
+      # Blocking options. By default the answerbot uses the "Mindest-Konfidenz" and the
+      # wildcard option from your PhoneBlock account settings
+      # (https://phoneblock.net/phoneblock/settings). Only set these to override them locally.
+      #- MIN_VOTES=4
+      #- WILDCARD=no
+      # Enable for debugging the SIP communication. This dumps all sent and received SIP packages to the log.
+      - LOG_ALL_PACKETS=no
+      # Whether to accept calls from local phones (numbers starting with '*').
+      # Set to 'no' if the answerbot is part of a Fritz!Box group call (Sammelruf),
+      # e.g. when a doorbell on Phone1 rings all phones in the group — otherwise the
+      # bot picks up the doorbell call (see discussion #327).
+      - ACCEPT_LOCAL=yes
+      # Phone number prefix that forces the answer bot to respond, even if the
+      # caller is not on the blocklist. Useful to test the bot from an external
+      # number that is not flagged as spam. Leave empty in production.
+      - TEST_PREFIX=
     volumes:
-      - ./conversation:/opt/phoneblock/conversation
+      # Default conversation files are built-in. Only map them if you want to use a custom conversation.
+      # - ./conversation:/opt/phoneblock/conversation
       - ./recordings:/opt/phoneblock/recordings
     restart: unless-stopped

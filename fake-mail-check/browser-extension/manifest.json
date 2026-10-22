@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Fake Mail Harvester",
+  "version": "1.1",
+  "description": "Collects disposable email addresses from temporary mail providers for the PhoneBlock fake-mail-check database.",
+  "permissions": ["activeTab", "storage"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://22.do/*"],
+      "js": ["normalize.js", "harvester.js", "content-22do.js"]
+    },
+    {
+      "matches": ["https://www.mailticking.com/*"],
+      "js": ["normalize.js", "harvester.js", "content-mailticking.js"]
+    },
+    {
+      "matches": ["https://smailpro.com/*"],
+      "js": ["normalize.js", "harvester.js", "content-smailpro.js"]
+    },
+    {
+      "matches": ["https://www.emailnator.com/*"],
+      "js": ["normalize.js", "harvester.js", "content-emailnator.js"]
+    },
+    {
+      "matches": ["https://temp-mail.org/*"],
+      "js": ["normalize.js", "harvester.js", "content-tempmail.js"]
+    }
+  ]
+}

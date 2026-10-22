@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE scenario SYSTEM "sipp.dtd">
+
+<!--
+  Mock SIP registrar with Digest challenge AND password verification.
+
+  Flow:
+    REGISTER  ->  401 Unauthorized + WWW-Authenticate
+    REGISTER  ->  200 OK if username + digest response match,
+                  call fails (check_it="true") otherwise.
+
+  Required dongle credentials:
+    SIP-User:    phoneblock-dongle
+    SIP-Pass:    dongle-password
+
+  Run via run-auth-registrar.sh — the wrapper computes the
+  expected digest response for the configured host IP and passes
+  it in via `-key expected_response`. The challenge intentionally
+  drops qop, so the response is deterministic:
+
+      HA1      = MD5("phoneblock-dongle:phoneblock.test:dongle-password")
+      HA2      = MD5("REGISTER:sip:<HOST_IP>")
+      response = MD5(HA1:0123456789abcdef:HA2)
+
+  The dongle picks the no-qop branch in digest_response() when our
+  challenge omits qop (sip_register.c:267-272), so this matches the
+  on-device math exactly. With qop="auth" the response would mix in
+  cnonce + nc and we couldn't pre-compute it; that's why qop is left
+  out here.
+-->
+<scenario name="PhoneBlock Dongle Mock Registrar (Digest)">
+
+  <!--
+    Loop entry. Sipp by default tracks call-ids per scenario instance
+    and marks the instance "dead" when the scenario ends. The dongle
+    keeps the same Call-ID for every REGISTER refresh, so a refresh
+    after the first round lands as "Dead call ... received a UDP
+    message" and goes unanswered. Looping the scenario keeps the
+    instance alive forever and lets it handle every refresh.
+  -->
+  <label id="loop"/>
+
+  <recv request="REGISTER"/>
+
+  <send>
+    <![CDATA[
+
+      SIP/2.0 401 Unauthorized
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag01[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      WWW-Authenticate: Digest realm="phoneblock.test", nonce="0123456789abcdef", algorithm=MD5
+      Server: SIPp Mock Registrar (PhoneBlock dongle test-rig)
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!--
+    Verify the dongle's Authorization header. We need to actually
+    *branch* on the result rather than only flag a check failure:
+    `check_it="true"` only marks the call as failed in stats — sipp
+    still runs the next `<send>`, which would 200-OK the dongle
+    even when the password is wrong (verified empirically).
+
+    Approach: capture both fields into variables, then guard the
+    200 OK and the 403 Forbidden sends with `condexec` / inverse so
+    only one fires per call.
+  -->
+  <recv request="REGISTER">
+    <action>
+      <!-- Capture the actual response value.
+           Two assign_to names: the first gets the whole match
+           ("response=\"…\""), the second gets capture-group 1 (the
+           hex digest itself). With only one name, sipp assigns the
+           whole match — which is why an earlier version compared
+           `response="…"` against the bare expected hash and never
+           matched. The whole_match name is referenced in <log>
+           below to satisfy sipp's "every variable must be referenced
+           more than once" abort check. -->
+      <!-- The MD5 response is the only 32-char hex run anywhere in
+           a REGISTER (nonce is 16 hex). No capture group needed —
+           a regex without parens makes sipp put the entire match
+           into the assign_to variable, and that's exactly the bare
+           hash we want to compare. (Patterns *with* parens behaved
+           strangely on this sipp build — assign_to never received
+           anything; sipp's reference docs/examples use parenless
+           patterns for this kind of single-token extraction.) -->
+      <ereg regexp="[0-9a-fA-F]{32}"
+            search_in="msg"
+            assign_to="actual_resp"/>
+      <!-- Park the expected hash in a string variable so strcmp can
+           compare two variables (strcmp's two operands have to be
+           variables, not literals).
+           NOTE the syntax: `[expected_response]` (no `$`) is the
+           keyword substitution of `-key`; `[$varname]` is an action
+           variable. The previous `[$expected_response]` resolved to
+           the empty string at runtime — every comparison failed,
+           even with the right password. -->
+      <assignstr assign_to="expected_resp" value="[expected_response]"/>
+      <log message="REGISTER auth check expecting [expected_response]"/>
+      <!-- strcmp returns "0" when the two strings are equal,
+           non-zero otherwise (libc strcmp semantics — could be the
+           ASCII diff of the first differing byte). -->
+      <strcmp variable="actual_resp" variable2="expected_resp" assign_to="cmp_result"/>
+      <log message="REGISTER auth: actual=[$actual_resp] expected=[$expected_resp] cmp=[$cmp_result]"/>
+    </action>
+  </recv>
+
+  <!--
+    Two mutually-exclusive sends, each gated on cmp_result. No
+    `next` jumps — sipp's `next="end"` apparently fires even when
+    the message was skipped by condexec, which means the second
+    send never gets a chance and the dongle sees no response at all.
+    Without next, both sends are evaluated; exactly one fires.
+
+      cmp_result = "0" (strings equal) → first send fires (200 OK),
+                                         second skipped.
+      cmp_result = "1" (strings differ) → first skipped (because
+                                         condexec_inverse="true"),
+                                         second fires (403).
+  -->
+  <send condexec="cmp_result" condexec_inverse="true">
+    <![CDATA[
+
+      SIP/2.0 200 OK
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag02[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      [last_Contact:];expires=300
+      Server: SIPp Mock Registrar (PhoneBlock dongle test-rig)
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <send condexec="cmp_result">
+    <![CDATA[
+
+      SIP/2.0 403 Forbidden
+      [last_Via:]
+      [last_From:]
+      [last_To:];tag=[pid]SIPpTag03[call_number]
+      [last_Call-ID:]
+      [last_CSeq:]
+      Server: SIPp Mock Registrar (PhoneBlock dongle test-rig)
+      Warning: 399 phoneblock.test "Password verification failed"
+      Content-Length: 0
+
+    ]]>
+  </send>
+
+  <!-- Back to the top so the next REGISTER refresh lands here. -->
+  <nop next="loop"/>
+
+  <ResponseTimeRepartition value="10, 50, 100, 250, 500, 1000"/>
+</scenario>

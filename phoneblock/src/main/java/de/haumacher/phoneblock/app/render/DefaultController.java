@@ -1,9 +1,9 @@
 package de.haumacher.phoneblock.app.render;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -15,13 +15,11 @@ import java.util.Properties;
 import org.apache.ibatis.session.SqlSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.thymeleaf.ITemplateEngine;
 import org.thymeleaf.context.WebContext;
 import org.thymeleaf.web.servlet.IServletWebExchange;
 
 import de.haumacher.phoneblock.app.LoginFilter;
 import de.haumacher.phoneblock.app.LoginServlet;
-import de.haumacher.phoneblock.app.RegistrationServlet;
 import de.haumacher.phoneblock.app.UIProperties;
 import de.haumacher.phoneblock.app.api.model.Rating;
 import de.haumacher.phoneblock.db.DB;
@@ -32,6 +30,7 @@ import de.haumacher.phoneblock.location.LocationService;
 import de.haumacher.phoneblock.location.model.Country;
 import de.haumacher.phoneblock.shared.Language;
 import de.haumacher.phoneblock.util.ServletUtil;
+import de.haumacher.phoneblock.util.UserAgentType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -45,10 +44,35 @@ public class DefaultController implements WebController {
 	
 	/**
 	 * Session attribute specifying the user's dial prefix ("+49" for Germany).
-	 * 
-	 * @see Country#getDialPrefix()
+	 *
+	 * @see Country#getDialPrefixes()
 	 */
 	public static final String DIAL_PREFIX_ATTR = "dialPrefix";
+
+	/**
+	 * Session attribute for storing a newly created password to display once.
+	 */
+	public static final String PASSWORD_ATTR = "passwd";
+
+	/**
+	 * Session attribute for storing a newly created CardDAV token to display once.
+	 */
+	public static final String CARD_DAV_TOKEN_ATTR = "cardDavToken";
+
+	/**
+	 * Session attribute for storing a newly created API key to display once.
+	 */
+	public static final String API_KEY_ATTR = "apiKey";
+
+	/**
+	 * Template variable for displaying a newly created password/token.
+	 */
+	public static final String TOKEN_VAR = "token";
+
+	/**
+	 * Request attribute / template variable for the canonical URL of the current page.
+	 */
+	public static final String CANONICAL_ATTR = "canonical";
 
 	static final String RENDER_TEMPLATE = "renderTemplate";
 
@@ -56,7 +80,7 @@ public class DefaultController implements WebController {
 
 	public static final WebController INSTANCE = new DefaultController();
 	
-	private static final Map<String, Object> PROPS;
+	private static volatile Map<String, Object> _props;
 	private static final Map<String, Object> DEPS;
 
 	private static final List<RatingDisplay> RATINGS = Arrays.asList(Rating.values()).stream()
@@ -64,8 +88,6 @@ public class DefaultController implements WebController {
 		.toList();
 	
 	static {
-		PROPS = toModel(UIProperties.APP_PROPERTIES);
-
 		DEPS = new HashMap<>();
 		DEPS.put("bulma", UIProperties.BULMA_PATH);
 		DEPS.put("bulmaCalendar", UIProperties.BULMA_CALENDAR_PATH);
@@ -99,7 +121,7 @@ public class DefaultController implements WebController {
 		
 		request.setAttribute("template", i18nTemplate);
 		
-        resolveDialPrefix(request);
+        resolveDialPrefix(request, lang);
 		
 		final IServletWebExchange webExchange = renderer.buildExchange(request, response);
         WebContext ctx = new WebContext(webExchange, lang.locale);
@@ -124,17 +146,7 @@ public class DefaultController implements WebController {
 	}
 
 	public static Language selectLanguage(Locale locale) {
-		Language language = Language.fromLocale(locale);
-		if (language != null) {
-			return language;
-		}
-		
-		Language fallback = Language.fromLocale(new Locale(locale.getLanguage()));
-		if (fallback != null) {
-			return fallback;
-		}
-		
-		return Language.getDefault();
+		return Language.fromLocale(locale);
 	}
 	
 	private static Language resolveLanguage(HttpServletRequest request) {
@@ -161,21 +173,24 @@ public class DefaultController implements WebController {
     		if (acceptLanguageHeader == null) {
 				locale = null;
     		} else {
-    			List<LanguageRange> acceptLanguage = LanguageRange.parse(acceptLanguageHeader);
-    			locale = Locale.lookup(acceptLanguage, Language.supportedLocales());
+    			try {
+    				List<LanguageRange> acceptLanguage = LanguageRange.parse(acceptLanguageHeader);
+    				locale = Locale.lookup(acceptLanguage, Language.supportedLocales());
+    			} catch (IllegalArgumentException ex) {
+    				// A malformed Accept-Language header (e.g. "en=0.9;q=0.9") makes LanguageRange.parse
+    				// throw; fall back to the default language rather than failing the whole request.
+    				LOG.warn("Ignoring malformed Accept-Language header '{}': {}", acceptLanguageHeader, ex.getMessage());
+    				locale = null;
+    			}
     		}
-    		if (locale == null) {
-    			lang = Language.getDefault();
-    		} else {
-    			lang = Language.fromLocale(locale);
-    		}
+    		lang = Language.fromLocale(locale);
     		
     		if (session != null) {
     			// Remember to make next lookup more efficient.
     			session.setAttribute(LANG_ATTR, lang);
     		}
         } else {
-        	lang = selectLanguage(selectedLang);
+        	lang = Language.fromTag(selectedLang);
 
     		// Remember requested language.
         	request.getSession().setAttribute(LANG_ATTR, lang);
@@ -186,7 +201,7 @@ public class DefaultController implements WebController {
         		DB db = DBService.getInstance();
         		try (SqlSession tx = db.openSession()) {
         			Users users = tx.getMapper(Users.class);
-        			users.setLocale(login, lang.tag);
+        			users.setLang(login, lang.tag);
         			tx.commit();
         		}
         	}
@@ -195,28 +210,58 @@ public class DefaultController implements WebController {
         return lang;
 	}
 
-	private static void resolveDialPrefix(HttpServletRequest request) {
-		String dialPrefix = selectDialPrefix(request);
+	private static void resolveDialPrefix(HttpServletRequest request, Language lang) {
+		String dialPrefix = selectDialPrefix(request, lang);
 		request.setAttribute("currentDialPrefix", dialPrefix);
+
+		// Also set the international prefix and trunk prefix for the user's country
+		List<Country> countries = Countries.countriesFromDialPrefix(dialPrefix);
+		String internationalPrefix = "00"; // Default fallback
+		String trunkPrefix = "0"; // Default fallback
+		if (countries != null && !countries.isEmpty()) {
+			Country country = countries.get(0);
+			List<String> intPrefixes = country.getInternationalPrefixes();
+			if (intPrefixes != null && !intPrefixes.isEmpty()) {
+				internationalPrefix = intPrefixes.get(0);
+			}
+			List<String> trunkPrefixes = country.getTrunkPrefixes();
+			if (trunkPrefixes != null && !trunkPrefixes.isEmpty()) {
+				trunkPrefix = trunkPrefixes.get(0);
+			}
+		}
+		request.setAttribute("internationalPrefix", internationalPrefix);
+		request.setAttribute("trunkPrefix", trunkPrefix);
 	}
 	
-	public static String selectDialPrefix(HttpServletRequest request) {
+	public static String selectDialPrefix(HttpServletRequest request, Language lang) {
 		String selectedPrefix = request.getParameter(DIAL_PREFIX_ATTR);
-		String dialPrefix = null;
+		String dialPrefix;
 		if (selectedPrefix == null) {
 			HttpSession session = request.getSession(false);
 			if (session != null) {
-				dialPrefix = (String) session.getAttribute(DIAL_PREFIX_ATTR);
-				if (dialPrefix != null) {
-					return dialPrefix;
+				String sessionDialPrefix = (String) session.getAttribute(DIAL_PREFIX_ATTR);
+				if (sessionDialPrefix != null) {
+					return sessionDialPrefix;
 				}
 			}
 			
-			// Detect from address.
-			Country country = LocationService.getInstance().getCountry(request);
-			if (country != null) {
-				List<String> dialPrefixes = country.getDialPrefixes();
-				dialPrefix = dialPrefixes.size() > 0 ? dialPrefixes.get(0) : null;
+			// Load from settings.
+			String login = LoginFilter.getAuthenticatedUser(request);
+			if (login != null) {
+				DB db = DBService.getInstance();
+				try (SqlSession tx = db.openSession()) {
+					Users users = tx.getMapper(Users.class);
+					dialPrefix = users.getDialPrefix(login);
+				}
+			} else {
+				// Detect from address.
+				Country country = LocationService.getInstance().getCountry(request);
+				if (country != null) {
+					List<String> dialPrefixes = country.getDialPrefixes();
+					dialPrefix = dialPrefixes.size() > 0 ? dialPrefixes.get(0) : lang.dialPrefix;
+				} else {
+					dialPrefix = lang.dialPrefix;
+				}
 			}
 			
 			if (session != null) {
@@ -224,7 +269,7 @@ public class DefaultController implements WebController {
 				session.setAttribute(DIAL_PREFIX_ATTR, dialPrefix);
 			}
 		} else {
-			dialPrefix = Countries.selectDialPrefix(selectedPrefix);
+			dialPrefix = Countries.normalizeDialPrefix(selectedPrefix, lang.dialPrefix);
 			
 			// Remember requested language.
 			request.getSession().setAttribute(DIAL_PREFIX_ATTR, dialPrefix);
@@ -244,45 +289,67 @@ public class DefaultController implements WebController {
 		return dialPrefix;
 	}
 	
-	public static Language selectLanguage(String selectedLang) {
-		// Normalize value.
-		Language language = Language.fromTag(selectedLang);
-		if (language == null) {
-			return Language.getDefault();
-		} else {
-			return language;
-		}
-	}
-
 	protected void fillContext(WebContext ctx, HttpServletRequest request) {
+		// Use request parameters as template variables (at least as default values).
+		for (Enumeration<String> it = request.getParameterNames(); it.hasMoreElements(); ) {
+			String attribute = it.nextElement();
+			ctx.setVariable(attribute, request.getParameter(attribute));
+		}
+
+		// Use request attributes as template variables.
+		for (Enumeration<String> it = request.getAttributeNames(); it.hasMoreElements(); ) {
+			String attribute = it.nextElement();
+			ctx.setVariable(attribute, request.getAttribute(attribute));
+		}
+
 		HttpSession session = request.getSession(false);
-		String userName = LoginFilter.getAuthenticatedUser(session);
-  		String token = RegistrationServlet.getPassword(session);
+		if (session != null) {
+			Object password = session.getAttribute(PASSWORD_ATTR);
+			Object cardDavToken = session.getAttribute(CARD_DAV_TOKEN_ATTR);
+			Object apiKey = session.getAttribute(API_KEY_ATTR);
+
+			// Show this only once.
+			session.removeAttribute(PASSWORD_ATTR);
+			session.removeAttribute(CARD_DAV_TOKEN_ATTR);
+			session.removeAttribute(API_KEY_ATTR);
+
+			ctx.setVariable(PASSWORD_ATTR, password);
+			ctx.setVariable(CARD_DAV_TOKEN_ATTR, cardDavToken);
+			ctx.setVariable(API_KEY_ATTR, apiKey);
+		}
+
+		String userName = LoginFilter.getAuthenticatedUser(request);
+		if (userName != null) {
+			ctx.setVariable("userName", userName);
+			ctx.setVariable("supporterId", "PhoneBlock-" + userName.substring(0, 13));
+			ctx.setVariable("loggedIn", Boolean.TRUE);
+		} else {
+			ctx.setVariable("loggedIn", Boolean.FALSE);
+		}
 		
-        ctx.setVariable("userName", userName);
-        ctx.setVariable("token", token);
-        ctx.setVariable("supporterId", userName == null ? null : "PhoneBlock-" + userName.substring(0, 13));
-        ctx.setVariable("loggedIn", Boolean.valueOf(userName != null));
-        ctx.setVariable(LoginServlet.LOCATION_ATTRIBUTE, LoginServlet.location(request));
+        ctx.setVariable(LoginServlet.LOCATION_ATTRIBUTE, LoginServlet.location(request, null));
         ctx.setVariable("currentPage", ServletUtil.currentPage(request));
         
         ctx.setVariable("titleKey", "app.defaultTitle");
         ctx.setVariable("descriptionKey", "app.defaultDescription");
-        ctx.setVariable("keywords", "");
         
-		ctx.setVariable("canonical", "https://phoneblock.net" + request.getContextPath() + request.getServletPath());
-        ctx.setVariable("props", PROPS);
+		Object explicitCanonical = request.getAttribute(CANONICAL_ATTR);
+		if (explicitCanonical instanceof String) {
+			ctx.setVariable(CANONICAL_ATTR, explicitCanonical);
+		} else {
+			ctx.setVariable(CANONICAL_ATTR, "https://phoneblock.net" + request.getContextPath() + request.getServletPath());
+		}
+        ctx.setVariable("props", props());
         ctx.setVariable("deps", DEPS);
         ctx.setVariable("contextPath", request.getContextPath());
         
-    	String userAgent = request.getHeader("User-Agent");
-    	userAgent = userAgent == null ? "" : userAgent.toLowerCase();
-    	boolean android = userAgent.contains("android");
-    	boolean iphone = userAgent.contains("iPhone");
-    	
-    	ctx.setVariable("android", Boolean.valueOf(android));
-		ctx.setVariable("iphone", Boolean.valueOf(iphone));
-		ctx.setVariable("fritzbox", Boolean.valueOf(!android && !iphone));
+    	UserAgentType userAgentType = UserAgentType.detect(request);
+
+    	ctx.setVariable("android", Boolean.valueOf(userAgentType.isAndroid()));
+		ctx.setVariable("iphone", Boolean.valueOf(userAgentType.isIPhone()));
+		ctx.setVariable("fritzbox", Boolean.valueOf(userAgentType.isFritzBox()));
+		ctx.setVariable("inMobileApp", Boolean.valueOf(userAgentType.isMobileApp()));
+		ctx.setVariable("userAgentType", userAgentType);
 		
 		ctx.setVariable("ratings", RATINGS);
 		ctx.setVariable("languages", Language.all());
@@ -292,6 +359,23 @@ public class DefaultController implements WebController {
 	/**
 	 * Converts {@link Properties} with '.'-structured keys to nested maps. 
 	 */
+	/**
+	 * The application properties as nested model for the templates.
+	 * 
+	 * <p>
+	 * Built on first use, because {@link UIProperties#APP_PROPERTIES} is completed with runtime
+	 * settings during application startup, see {@link UIProperties#loadRuntimeSettings()}.
+	 * </p>
+	 */
+	static Map<String, Object> props() {
+		Map<String, Object> result = _props;
+		if (result == null) {
+			result = toModel(UIProperties.APP_PROPERTIES);
+			_props = result;
+		}
+		return result;
+	}
+
 	static Map<String, Object> toModel(Properties appProperties) {
 		Map<String, Object> result = new HashMap<>();
 		

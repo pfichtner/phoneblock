@@ -1,59 +1,51 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head(title=#{page.settings.title})}"></head>
+<head th:replace="~{fragments/page :: head(titleKey='page.settings.title', descriptionKey=null, titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
 
 <section class="section" th:unless="${userName}">
 	<div class="content">
-		<h1 data-tx="t0001">Ρυθμίσεις</h1>
+		<h1 data-tx="t0001:1798fbdb">Ρυθμίσεις</h1>
 		
-		<p data-tx="t0002">Για να επεξεργαστείτε τις προσωπικές σας ρυθμίσεις, πρέπει να <a th:href="@{/login(location=${location})}">συνδεθείτε</a>.</p>
+		<p data-tx="t0002:d4c49b15">Για να επεξεργαστείτε τις προσωπικές σας ρυθμίσεις, πρέπει να <a th:href="@{/login(location=${location})}">συνδεθείτε</a>.</p>
 	</div>
 </section>
 
 <section class="section" th:if="${userName}">
 	<div class="content">
-		<h1 data-tx="t0003">Ρυθμίσεις</h1>
-			<p data-tx="t0004">Καλώς ήρθατε <th:block th:text="${settings.displayName}"></th:block> <th:block th:if="${settings.email}"> (<th:block th:text="${settings.email}"></th:block>)</th:block>.</p>
+		<h1 data-tx="t0003:1798fbdb">Ρυθμίσεις</h1>
+			<form class="welcomename-rename-form" method="post" th:action="@{/update-settings(action='renameDisplayName')}">
+				<p data-tx="t0004:8ea3fa93">Καλώς ήρθατε <span><th:block th:text="${settings.displayName}"> χρήστης</th:block> <button class="button is-small is-ghost welcomename-edit-btn" data-tx="t0100:65a9dbde" title="Μετονομασία" type="button"> <i class="fa-solid fa-pen-to-square"></i> </button> </span> <span> <input class="input is-small welcomename-input" name="newDisplayName" style="display: none; width: 200px;" th:value="${settings.displayName}" type="text"/> <button class="button is-small is-success welcomename-save-btn" data-tx="t0101:a484a888" style="display: none;" title="Αποθήκευση" type="button"> <i class="fa-solid fa-check"></i> </button> <button class="button is-small is-ghost welcomename-cancel-btn" data-tx="t0102:207feda3" style="display: none;" title="Ακύρωση" type="button"> <i class="fa-solid fa-xmark"></i> </button> </span> !</p>
+			</form>
+
+			<div class="notification is-success" th:if="${settingsMessage}">
+				<button class="delete" onclick="this.parentElement.style.display='none';"></button>
+				<span th:text="${settingsMessage}"></span>
+			</div>
+
+			<div class="field" th:if="${settings.email}">
+				<label class="label" data-tx="t0121:eb3a32b1">Διεύθυνση ηλεκτρονικού ταχυδρομείου</label>
+				<div class="control">
+					<code dir="ltr" th:text="${settings.email}"></code>
+					<a class="button is-small is-text" th:href="@{/change-email}">
+						<span class="icon is-small"><i class="fa-solid fa-pen-to-square"></i></span>
+						<span data-tx="t0122:d31ab90e">Αλλαγή</span>
+					</a>
+				</div>
+			</div>
 			
 			<form method="post" th:action="@{/update-settings}">
 
-			<article class="message is-info" th:if="${token}">
-			  <div class="message-header">
-			    <p data-tx="t0005">Τα δεδομένα πρόσβασής σας</p>
-			  </div>
-			  
-			  <div class="message-body">
-				<div class="field">
-				  <label class="label" data-tx="t0006">Διεύθυνση Internet του διακομιστή CardDAV</label>
-				  <div class="control"><code dir="ltr" id="url" th:text="|https://phoneblock.net${contextPath}/contacts/|"></code><a class="copyToClipboard" data-tx="t0083" href="#" id="url_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></a></div>
-				</div>
-
-				<div class="field">
-				  <label class="label" data-tx="t0007">Όνομα χρήστη</label>
-				  <div class="control"><code dir="ltr" id="login" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0084" id="login_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></a></div>
-				  <p class="help" data-tx="t0008">Πρέπει να εισαγάγετε αυτή την τιμή ως όνομα χρήστη για την <a th:href="@{/setup}">ανάκληση της λίστας αποκλεισμού</a>.</p>
-				</div>
-					
-				<div class="field">
-				  <label class="label" data-tx="t0009">κωδικός πρόσβασης</label>
-				  <div class="control"><code dir="ltr" id="passwd" th:text="${token}"></code><a class="copyToClipboard" data-tx="t0085" href="#" id="passwd_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></a></div>
-				  <p class="help" data-tx="t0010">Πρέπει να χρησιμοποιήσετε αυτόν τον κωδικό πρόσβασης για να <a th:href="@{/setup}">ρυθμίσετε τον τηλεφωνικό κατάλογο</a> ή για να συνδεθείτε σε αυτόν τον ιστότοπο.</p>
-				  <p class="help" data-tx="t0011">Σημειώστε τον κωδικό πρόσβασης (ή αποθηκεύστε τον σε ένα <a href="https://keepass.info/">διαχειριστή κωδικών πρόσβασης</a>), καθώς θα εμφανίζεται μόνο μέχρι να αποσυνδεθείτε ή να λήξει η συνεδρία σας.</p>
-				</div>
-			  </div>
-			</article>
-
-			<div class="field" th:unless="${token}">
-			  <label class="label" data-tx="t0012">Όνομα χρήστη</label>
-			  <div class="control"><code dir="ltr" id="login" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0086" id="login_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></a></div>
-			  <p class="help" data-tx="t0013">Πρέπει να εισαγάγετε αυτή την τιμή ως όνομα χρήστη για την <a th:href="@{/setup}">ανάκτηση της λίστας αποκλεισμού</a>. Ο κωδικός πρόσβασής σας εμφανίστηκε όταν συνδεθήκατε για πρώτη φορά. Εάν δεν τον θυμάστε πλέον, μπορείτε να δημιουργήσετε έναν <a href="#resetPassword">νέο κωδικό πρόσβασης</a> στο κάτω μέρος αυτής της σελίδας. Αλλά προσέξτε: ο παλιός κωδικός πρόσβασης θα καταστεί άκυρος.</p>
+			<div class="field">
+			  <label class="label" data-tx="t0012:548c40c1">Όνομα χρήστη</label>
+			  <div class="control"><code dir="ltr" id="login" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0086:3f7efe41" id="login_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></a></div>
+			  <p class="help" data-tx="t0013:bf5599db">Μπορείτε να χρησιμοποιήσετε αυτό το όνομα χρήστη για να συνδεθείτε στον ιστότοπο PhoneBlock χωρίς e-mail. Ο αντίστοιχος κωδικός πρόσβασης εμφανίστηκε όταν συνδεθήκατε για πρώτη φορά. Εάν δεν τον θυμάστε πλέον, μπορείτε να δημιουργήσετε έναν <a href="#resetPassword">νέο κωδικό πρόσβασης</a> στο κάτω μέρος αυτής της σελίδας.</p>
 			</div>
 
 			<div class="field">
-			  <label class="label" data-tx="t0094">Ο κωδικός της χώρας σας</label>
+			  <label class="label" data-tx="t0094:1e57ddfa">Ο κωδικός της χώρας σας</label>
 			  <div class="control has-icons-left">
 				<div class="select">			  
 			    <select class="input" name="myDialPrefix">
@@ -64,69 +56,75 @@
 			      <i class="fa-solid fa-earth-americas"></i>
 			    </span>
 			  </div>
-			  <p class="help" data-tx="t0091">Οι τηλεφωνικοί αριθμοί με τον κωδικό της χώρας σας θα εμφανίζονται στη λίστα μπλοκ σας σε συντομογραφία (ως εθνικοί αριθμοί). Οι αναφορές SPAM από εσάς έχουν ιδιαίτερη βαρύτητα για άλλους χρήστες στη χώρα σας.</p>
+			  <p class="help" data-tx="t0091:5d390f48">Οι τηλεφωνικοί αριθμοί με τον κωδικό της χώρας σας θα εμφανίζονται στη λίστα μπλοκ σας σε συντομογραφία (ως εθνικοί αριθμοί). Οι αναφορές SPAM από εσάς έχουν ιδιαίτερη βαρύτητα για άλλους χρήστες στη χώρα σας.</p>
 			</div>
 
 			<div class="field">
-			  <label class="label" data-tx="t0014">Μέγιστο μέγεθος λίστας μπλοκ</label>
+			  <label class="label" data-tx="t0014:41337e7b">Μέγιστο μέγεθος λίστας μπλοκ</label>
 			  <div class="control has-icons-left">
 				<div class="select">			  
 			    <select class="input" name="maxLength">
-			    	<option data-tx="t0015" th:selected="${settings.maxLength == 1000}" value="1000">1000 (μικρό για πολύ παλιά Fritz!Boxes)</option>
-			    	<option data-tx="t0016" th:selected="${settings.maxLength == 2000}" value="2000">2000 (συνιστάται για τα περισσότερα Fritz!Box)</option>
-			    	<option data-tx="t0017" th:selected="${settings.maxLength == 3000}" value="3000">3000 (π.χ. εξακολουθεί να λειτουργεί στο FRITZ!Box 7590)</option>
-			    	<option data-tx="t0018" th:selected="${settings.maxLength == 4000}" value="4000">4000 (βλέπε σημειώσεις παρακάτω)</option>
-			    	<option data-tx="t0019" th:selected="${settings.maxLength == 5000}" value="5000">5000 (τεράστια, βλ. σημειώσεις παρακάτω)</option>
-			    	<option data-tx="t0020" th:selected="${settings.maxLength == 6000}" value="6000">6000 (ακραία, προσέξτε, το Fritz!Box σας μπορεί να καταρρεύσει)</option>
+			    	<option data-tx="t0015:692f1dda" th:selected="${settings.maxLength == 1000}" value="1000">1000 (μικρό για πολύ παλιά FRITZ!Boxes)</option>
+			    	<option data-tx="t0016:76efddbf" th:selected="${settings.maxLength == 2000}" value="2000">2000 (συνιστάται για τα περισσότερα FRITZ!Boxes)</option>
+			    	<option data-tx="t0017:b72a8194" th:selected="${settings.maxLength == 3000}" value="3000">3000 (π.χ. εξακολουθεί να λειτουργεί στο FRITZ!Box 7590)</option>
+			    	<option data-tx="t0018:a45cbdd9" th:selected="${settings.maxLength == 4000}" value="4000">4000 (βλέπε σημειώσεις παρακάτω)</option>
+			    	<option data-tx="t0019:27e7dbdd" th:selected="${settings.maxLength == 5000}" value="5000">5000 (τεράστια, βλ. σημειώσεις παρακάτω)</option>
+			    	<option data-tx="t0020:654afa95" th:selected="${settings.maxLength == 6000}" value="6000">6000 (ακραία, προσέξτε, το FRITZ!Box σας μπορεί να καταρρεύσει)</option>
 			    </select>
 			    </div>
 			    <span class="icon is-small is-left">
 			      <i class="fas fa-ruler-vertical"></i>
 			    </span>
 			  </div>
-			  <p class="help" data-tx="t0021">Αν έχετε προβλήματα με την ενημέρωση της λίστας αποκλεισμού, μπορείτε να μειώσετε το μέγεθος της λίστας αποκλεισμού εδώ. Η AVM συνιστά να γεμίζετε τους τηλεφωνικούς καταλόγους με το πολύ 1000 καταχωρήσεις. Το FRITZ!Box 7590, για παράδειγμα, μπορεί να διαχειριστεί έως και 3000 καταχωρήσεις σε έναν τηλεφωνικό κατάλογο.</p>
+			  <p class="help" data-tx="t0021:28fc9e2c">Αν έχετε προβλήματα με την ενημέρωση της λίστας αποκλεισμού, μπορείτε να μειώσετε το μέγεθος της λίστας αποκλεισμού εδώ. Η AVM συνιστά να γεμίζετε τους τηλεφωνικούς καταλόγους με το πολύ 1000 καταχωρήσεις. Το FRITZ!Box 7590, για παράδειγμα, μπορεί να διαχειριστεί έως και 3000 καταχωρήσεις σε έναν τηλεφωνικό κατάλογο.</p>
 			  
-			  <p class="help" data-tx="t0022"><b>Προσοχή:</b> Εάν θέλετε να δοκιμάσετε πόσες καταχωρήσεις μπορεί να αποθηκεύσει το κουτί σας σε έναν τηλεφωνικό κατάλογο, προχωρήστε ως εξής: Ξεκινήστε με την προεπιλεγμένη ρύθμιση των 2000 καταχωρήσεων. Συγχρονίστε τη λίστα μπλοκ και εμφανίστε τον τηλεφωνικό κατάλογο της λίστας μπλοκ. Μετακινηθείτε στο τέλος και εμφανίστε την προεπισκόπηση εκτύπωσης της λίστας μπλοκ και σημειώστε τον αριθμό των σελίδων που θα εκτυπωθούν. Τώρα αυξήστε το μέγεθος της λίστας μπλοκ κατά ένα βήμα, συγχρονίστε εκ νέου τη λίστα μπλοκ και εμφανίστε ξανά την προεπισκόπηση εκτύπωσης της λίστας μπλοκ. Εάν ο αριθμός των σελίδων έχει αυξηθεί ανάλογα, τότε το κουτί σας μπορεί να χειριστεί αυτό το μέγεθος, δοκιμάστε το επόμενο μέγεθος. Εάν ο αριθμός των σελίδων στην προεπισκόπηση εκτύπωσης δεν έχει αυξηθεί ή δεν έχει αυξηθεί ανάλογα, τότε χρησιμοποιήστε το τελευταίο μικρότερο μέγεθος της λίστας μπλοκ. Είναι ενδιαφέρον ότι το πλαίσιο Fritz!Box δεν αναφέρει σφάλμα εάν ένας τηλεφωνικός κατάλογος γίνει πολύ μεγάλος, αλλά είτε απλώς δεν συγχρονίζεται είτε απλώς παραλείπει αριθμούς. Έχω δει κουτιά να καταρρέουν απλά αν το μέγεθος του τηλεφωνικού καταλόγου είναι πολύ μεγάλο - γι' αυτό να είστε προσεκτικοί.</p>
+			  <p class="help" data-tx="t0022:930f3ae3"><b>Προσοχή:</b> Εάν θέλετε να δοκιμάσετε πόσες καταχωρήσεις μπορεί να αποθηκεύσει το κουτί σας σε έναν τηλεφωνικό κατάλογο, προχωρήστε ως εξής: Ξεκινήστε με την προεπιλεγμένη ρύθμιση των 2000 καταχωρήσεων. Συγχρονίστε τη λίστα μπλοκ και εμφανίστε τον τηλεφωνικό κατάλογο της λίστας μπλοκ. Μετακινηθείτε στο τέλος και εμφανίστε την προεπισκόπηση εκτύπωσης της λίστας μπλοκ και σημειώστε τον αριθμό των σελίδων που θα εκτυπωθούν. Τώρα αυξήστε το μέγεθος της λίστας μπλοκ κατά ένα βήμα, συγχρονίστε εκ νέου τη λίστα μπλοκ και εμφανίστε ξανά την προεπισκόπηση εκτύπωσης της λίστας μπλοκ. Εάν ο αριθμός των σελίδων έχει αυξηθεί ανάλογα, τότε το κουτί σας μπορεί να χειριστεί αυτό το μέγεθος, δοκιμάστε το επόμενο μέγεθος. Εάν ο αριθμός των σελίδων στην προεπισκόπηση εκτύπωσης δεν έχει αυξηθεί ή δεν έχει αυξηθεί ανάλογα, τότε χρησιμοποιήστε το τελευταίο μικρότερο μέγεθος της λίστας μπλοκ. Είναι ενδιαφέρον ότι το FRITZ!Box δεν αναφέρει σφάλμα εάν ένας τηλεφωνικός κατάλογος γίνει πολύ μεγάλος, αλλά είτε απλά δεν συγχρονίζεται είτε απλά παραλείπει αριθμούς. Έχω δει κουτιά να καταρρέουν απλά αν το μέγεθος του τηλεφωνικού καταλόγου είναι πολύ μεγάλο - γι' αυτό να είστε προσεκτικοί.</p>
 			</div>
 			
 			<div class="field">
-			  <label class="label" data-tx="t0023">Ελάχιστη εμπιστοσύνη</label>
+			  <label class="label" data-tx="t0023:6621f89a">Ελάχιστη εμπιστοσύνη</label>
 			  <div class="control has-icons-left">
 				<div class="select">			  
 			    <select class="input" name="minVotes">
-			    <option data-tx="t0024" th:selected="${settings.minVotes == 2}" value="2">2 (κλειδώστε αμέσως)</option>	
-			    <option data-tx="t0025" th:selected="${settings.minVotes == 4}" value="4">4 (εν αναμονή επιβεβαιώσεων)</option>	
-			    <option data-tx="t0026" th:selected="${settings.minVotes == 10}" value="10">10 (μόνο όταν είναι ασφαλές)</option>	
-			    <option data-tx="t0027" th:selected="${settings.minVotes == 100}" value="100">100 (μόνο για τους κορυφαίους spammers)</option>	
+			    <option data-tx="t0024:a337a091" th:selected="${settings.minVotes == 2}" value="2">2 (κλειδώστε αμέσως)</option>	
+			    <option data-tx="t0025:eeb2021a" th:selected="${settings.minVotes == 4}" value="4">4 (εν αναμονή επιβεβαιώσεων)</option>	
+			    <option data-tx="t0026:a8e81033" th:selected="${settings.minVotes == 10}" value="10">10 (μόνο όταν είναι ασφαλές)</option>	
+			    <option data-tx="t0027:10a19182" th:selected="${settings.minVotes == 100}" value="100">100 (μόνο για τους κορυφαίους spammers)</option>	
 			    </select>
 			    </div>
 			    <span class="icon is-small is-left">
 			      <i class="fas fa-phone-volume"></i>
 			    </span>
 			  </div>
-			  <p class="help" data-tx="t0028">Όσο υψηλότερο αριθμό επιλέγετε, τόσο περισσότερες καταγγελίες πρέπει να έχει ένας τηλεφωνικός αριθμός για να προστεθεί στην προσωπική σας λίστα αποκλεισμού και τόσο μεγαλύτερη είναι η πιθανότητα να λάβετε κλήση από έναν νέο αριθμό spam. Κάθε καταγγελία προσθέτει 2 στη βαθμολογία εμπιστοσύνης.</p>
+			  <p class="help" data-tx="t0028:6efc5ac9">Όσο υψηλότερο αριθμό επιλέγετε, τόσο περισσότερες καταγγελίες πρέπει να έχει ένας τηλεφωνικός αριθμός για να προστεθεί στην προσωπική σας λίστα αποκλεισμού και τόσο μεγαλύτερη είναι η πιθανότητα να λάβετε κλήση από έναν νέο αριθμό spam. Κάθε καταγγελία προσθέτει 2 στη βαθμολογία εμπιστοσύνης.</p>
 			</div>
 			
 			<div class="field">
-			  <label class="checkbox" data-tx="t0029"><input name="wildcards" th:checked="${settings.wildcards}" type="checkbox"/> Συνοψίστε τους αριθμούς με "*"</label>
-			  <p class="help" data-tx="t0030">Εάν επιλέξετε αυτή την επιλογή, οι γειτονικοί αριθμοί στη λίστα αποκλεισμού σας θα συνδυαστούν σε έναν αριθμό με ένα μπαλαντέρ ("*"). Πολλοί επαγγελματίες spammers έχουν σύνδεση πολλών συσκευών και χρησιμοποιούν ένα ολόκληρο μπλοκ αριθμών ως αποστολείς. Με αυτήν την επιλογή, όλοι αυτοί οι αριθμοί αποκλείονται αυτόματα και η λίστα μπλοκ σας μπορεί να περιλαμβάνει περισσότερους αριθμούς ανεπιθύμητης αλληλογραφίας. Το Fritz!Box υποστηρίζει τηλεφωνικούς καταλόγους με αριθμούς μπαλαντέρ και στη συνέχεια μπλοκάρει ολόκληρο το καθορισμένο εύρος αριθμών. Ωστόσο, ενδέχεται να μην μπορείτε να χρησιμοποιήσετε αριθμούς μπαλαντέρ σε άλλες συσκευές.</p>
+			  <label class="checkbox" data-tx="t0029:1346525e"><input name="wildcards" th:checked="${settings.wildcards}" type="checkbox"/> Συνοψίστε τους αριθμούς με "*"</label>
+			  <p class="help" data-tx="t0030:6bc4aa6a">Εάν επιλέξετε αυτή την επιλογή, οι γειτονικοί αριθμοί στη λίστα αποκλεισμού σας θα συνδυαστούν σε έναν αριθμό με ένα μπαλαντέρ ("*"). Πολλοί επαγγελματίες spammers έχουν σύνδεση με πολλές συσκευές και χρησιμοποιούν ένα ολόκληρο μπλοκ αριθμών ως αποστολείς. Με αυτή την επιλογή, όλοι αυτοί οι αριθμοί αποκλείονται αυτόματα και η λίστα μπλοκ σας μπορεί να περιλαμβάνει περισσότερους αριθμούς ανεπιθύμητης αλληλογραφίας. Το FRITZ!Box υποστηρίζει τηλεφωνικούς καταλόγους με αριθμούς μπαλαντέρ και στη συνέχεια μπλοκάρει ολόκληρο το καθορισμένο εύρος αριθμών. Ωστόσο, ενδέχεται να μην μπορείτε να χρησιμοποιήσετε αριθμούς μπαλαντέρ σε άλλες συσκευές.</p>
 			</div>
 
 			<div class="field">
 			  <label class="checkbox">
 			    <input name="nationalOnly" th:checked="${settings.nationalOnly}" type="checkbox"/>
-				<span data-tx="t0092">Μόνο εθνικοί αριθμοί</span>
+				<span data-tx="t0092:781fecd1">Μόνο εθνικοί αριθμοί</span>
 			  </label>
 			
-			  <p class="help" data-tx="t0093">Αυτή η επιλογή είναι χρήσιμη εάν έχετε αποκλείσει όλους τους ξένους αριθμούς στο Fritz! Με αυτή την επιλογή, μόνο εθνικοί αριθμοί θα εμφανίζονται στη λίστα αποκλεισμού σας. Αυτό σημαίνει ότι περισσότεροι αριθμοί που αφορούν εσάς θα χωρέσουν στη λίστα αποκλεισμού σας. Βεβαιωθείτε ότι έχετε ορίσει σωστά τον κωδικό χώρας σας παραπάνω.</p> 
+			  <p class="help" data-tx="t0093:9e52b947">Αυτή η επιλογή είναι χρήσιμη εάν έχετε μπλοκάρει όλους τους ξένους αριθμούς στο FRITZ! Με αυτή την επιλογή, μόνο εθνικοί αριθμοί θα εμφανίζονται στη λίστα αποκλεισμού σας. Αυτό σημαίνει ότι περισσότεροι αριθμοί που σας αφορούν θα χωρέσουν στη λίστα αποκλεισμού σας. Βεβαιωθείτε ότι έχετε ορίσει σωστά τον κωδικό χώρας σας παραπάνω.</p> 
 			</div>
 			
 			<div class="field is-grouped">
 			  <p class="control">
-			    <button class="button is-primary" data-tx="t0031" type="submit">Αποθήκευση</button>
+			    <button class="button is-primary" type="submit">
+			      <span class="icon"><i class="fa-solid fa-floppy-disk"></i></span>
+			      <span data-tx="t0114:31aafd4a">Αποθήκευση</span>
+			    </button>
 			  </p>
 			  <p class="control">
-			    <a class="button " data-tx="t0032" th:href="@{/settings}">Απορρίψτε το</a>
+			    <a class="button " th:href="@{/settings}">
+			      <span class="icon"><i class="fa-solid fa-rotate-left"></i></span>
+			      <span data-tx="t0115:879e98b4">Απορρίψτε το</span>
+			    </a>
 			  </p>
 			</div>
 		</form>
@@ -135,65 +133,116 @@
 
 <section class="section">
 	<div class="content">
-	<h2 data-tx="t0033" id="myAPIKeys">Τα κλειδιά σας API</h2>
-	<p data-tx="t0034">Εάν χρησιμοποιείτε άλλες εφαρμογές για τον έλεγχο τηλεφωνικών αριθμών με το PhoneBlock (π.χ. <a href="https://f-droid.org/packages/spam.blocker/">SpamBlocker</a> ή <a href="https://spamblockup.jimdofree.com/">SpamBlockUp</a>), τότε χρειάζεστε ένα κλειδί API. Για τον τηλεφωνικό κατάλογο μπλοκαρίσματος στο Fritz!Box σας, χρησιμοποιείτε απλώς το όνομα χρήστη PhoneBlock και τον κωδικό πρόσβασης PhoneBlock, οπότε δεν χρειάζεστε κλειδί API για αυτό.</p>
+	<h2 data-tx="t0033:ec96c339" id="myAPIKeys">Τα κλειδιά σας API</h2>
+	<p data-tx="t0034:58e9ff35">Εάν χρησιμοποιείτε άλλες εφαρμογές για τον έλεγχο τηλεφωνικών αριθμών με το PhoneBlock (π.χ. <a href="https://f-droid.org/packages/spam.blocker/">SpamBlocker</a> ή <a href="https://spamblockup.jimdofree.com/">SpamBlockUp</a>), τότε χρειάζεστε ένα κλειδί API. Για τον τηλεφωνικό κατάλογο μπλοκαρίσματος στο FRITZ!Box σας, χρησιμοποιείτε απλώς το όνομα χρήστη PhoneBlock και τον κωδικό πρόσβασης PhoneBlock, οπότε δεν χρειάζεστε κλειδί API για αυτό.</p>
 	
-	<p data-tx="t0035" th:if="${explicitTokens.empty}">Δεν έχετε δημιουργήσει ακόμη κανένα κλειδί API.</p>
-	<form method="post" th:action="@{/update-settings(action='deleteAPIKeys')}" th:unless="${explicitTokens.empty}">
-	<table>
-		<tr>
-			<th>
-			</th>
-			<th data-tx="t0036">Όνομα</th>
-			<th data-tx="t0037">Δημιουργεί</th>
-			<th data-tx="t0038">Τελευταία χρήση</th>
-			<th data-tx="t0039">Συσκευή</th>
-		</tr>
+	<p data-tx="t0035:46fe9aee" th:if="${explicitTokens.empty}">Δεν έχετε ακόμη δημιουργήσει κλειδιά API ή κουπόνια CardDAV.</p>
+	<div th:unless="${explicitTokens.empty}">
+	<table class="table is-fullwidth">
+		<thead>
+			<tr>
+				<th style="width: 40px;"></th>
+				<th data-tx="t0103:df714d36" style="width: 100px;">Τύπος</th>
+				<th data-tx="t0036:b4d4555f">Όνομα</th>
+				<th data-tx="t0037:1e1e9f52">Δημιουργεί</th>
+				<th data-tx="t0038:46b89898">Τελευταία χρήση</th>
+				<th data-tx="t0039:9b222602">Συσκευή</th>
+			</tr>
+		</thead>
+		<tbody>
+			<tr th:each="authToken : ${explicitTokens}">
+				<td>
+					<input class="apikey-delete-checkbox" form="deleteAPIKeysForm" th:name="'key-' + ${authToken.id}" type="checkbox"/>
+				</td>
 
-		<tr th:each="authToken : ${explicitTokens}">
-			<td>
-				<input th:name="'key-' + ${authToken.id}" type="checkbox"/>
-			</td>
-			<td th:text="${authToken.label}"></td>
-			<td th:text="${#dates.format(#converters.fromEpoch(authToken.created))}"></td>
-			<td>
-				<th:block data-tx="t0040" th:unless="${authToken.lastAccess}">Δεν χρησιμοποιήθηκε.</th:block>
-				<th:block th:if="${authToken.lastAccess}" th:text="${#dates.format(#converters.fromEpoch(authToken.lastAccess))}"></th:block>
-			</td>
-			<td th:text="${authToken.userAgent}"></td>
-		</tr>
+				
+				<td>
+					<span class="tag" th:classappend="${authToken.purposeBadgeClass}" th:text="${authToken.purposeLabel}"></span>
+				</td>
+
+				<td>
+					<span class="apikey-label" th:text="${authToken.label}"></span>
+					<form class="apikey-rename-form" method="post" style="display: inline;" th:action="@{/update-settings(action='renameAPIKey')}">
+						<input name="keyId" th:value="${authToken.id}" type="hidden"/>
+						<input class="input is-small apikey-input" name="newLabel" style="display: none; width: 200px;" th:value="${authToken.label}" type="text"/>
+						<button class="button is-small is-success apikey-save-btn" data-tx="t0123:a484a888" style="display: none;" title="Αποθήκευση" type="button">
+							<i class="fa-solid fa-check"></i>
+						</button>
+						<button class="button is-small is-ghost apikey-cancel-btn" data-tx="t0124:207feda3" style="display: none;" title="Ακύρωση" type="button">
+							<i class="fa-solid fa-xmark"></i>
+						</button>
+						<button class="button is-small is-ghost apikey-edit-btn" data-tx="t0125:65a9dbde" title="Μετονομασία" type="button">
+							<i class="fa-solid fa-pen-to-square"></i>
+						</button>
+					</form>
+				</td>
+				<td th:text="${#dates.format(#converters.fromEpoch(authToken.created))}"></td>
+				<td>
+					<th:block data-tx="t0040:64914f4f" th:unless="${authToken.lastAccess}">Δεν χρησιμοποιήθηκε.</th:block>
+					<th:block th:if="${authToken.lastAccess}" th:text="${#dates.format(#converters.fromEpoch(authToken.lastAccess))}"></th:block>
+				</td>
+				<td th:text="${authToken.userAgent}"></td>
+			</tr>
+		</tbody>
 	</table>
-	
+
+	<form id="deleteAPIKeysForm" method="post" th:action="@{/update-settings(action='deleteAPIKeys')}">
 	<div class="field is-grouped">
 	  <p class="control">
-	    <button class="button is-danger" data-tx="t0041" type="submit">Διαγραφή επιλεγμένου</button>
+	    <button class="button is-danger" type="submit">
+	      <span class="icon"><i class="fa-solid fa-trash"></i></span>
+	      <span data-tx="t0116:6bb39cda">Διαγραφή επιλεγμένου</span>
+	    </button>
 	  </p>
 	</div>
-	
 	</form>
+
+	</div>
 	</div>
 </section>
 
 <section class="section">
 	<div class="content">
-	<h2 data-tx="t0042" id="createAPIKey">Δημιουργία κλειδιού API</h2>
+	<h2 data-tx="t0104:8aa69c2" id="createToken">Δημιουργία token</h2>
 
-	<form method="post" th:action="@{/update-settings(action='createAPIKey')}">
+	<p data-tx="t0105:dfdefec">Δημιουργήστε ένα token για χρήση με εφαρμογές (API) ή για τη δημιουργία της λίστας αποκλεισμού ως τηλεφωνικού καταλόγου στο FRITZ!Box (CARDDAV).</p>
 
-	<div class="field">
-	  <label class="label" data-tx="t0043">Παρατήρηση για τη χρήση</label>
-	  <p class="control has-icons-left">
-	    <input class="input" data-tx="t0087" name="apikey-label" placeholder="Χρήση για..." type="text"/>
-	  </p>
-	  <p class="help" data-tx="t0044">Μπορείτε να καταχωρήσετε εδώ μια σημείωση σχετικά με το για ποιο λόγο δημιουργήσατε το κλειδί API, π.χ. "SpamBlocker στο κινητό τηλέφωνο της γιαγιάς.".</p>
-	</div>
-		
-	<div class="field is-grouped">
-	  <p class="control">
-	    <button class="button is-primary" data-tx="t0045" type="submit">Δημιουργία κλειδιού API</button>
-	  </p>
-	</div>
+	<form method="post" th:action="@{/update-settings(action='createToken')}">
+		<div class="field">
+		  <label class="label" data-tx="t0106:ce2b98c8">Τύπος Token</label>
+		  <div class="control has-icons-left">
+		    <div class="select is-fullwidth">
+		      <select name="token-type">
+		        <option data-tx="t0107:b2896f37" value="API">API - για εφαρμογές όπως το SpamBlocker ή το SpamBlockUp</option>
+		        <option data-tx="t0108:969f2a63" value="CARDDAV">CardDAV - για τον τηλεφωνικό κατάλογο FRITZ!Box</option>
+		      </select>
+		    </div>
+		    <span class="icon is-small is-left">
+		      <i class="fa-solid fa-tag"></i>
+		    </span>
+		  </div>
+		  <p class="help" data-tx="t0109:f6acf0fc">Επιλέξτε την προβλεπόμενη χρήση αυτού του κουπονιού.</p>
+		</div>
 
+		<div class="field">
+		  <label class="label" data-tx="t0110:dcf4d98e">Παρατήρηση για τη χρήση</label>
+		  <p class="control has-icons-left">
+		    <input class="input" data-tx="t0111:68dc02ac" name="token-label" placeholder="π.χ. 'SpamBlocker στο κινητό τηλέφωνο της γιαγιάς' ή 'FRITZ!Box σαλόνι'" type="text"/>
+		    <span class="icon is-small is-left">
+		      <i class="fa-solid fa-pen"></i>
+		    </span>
+		  </p>
+		  <p class="help" data-tx="t0112:e1254c4">Μια ένδειξη για ποιο λόγο δημιουργήσατε αυτό το token.</p>
+		</div>
+
+		<div class="field is-grouped">
+		  <p class="control">
+		    <button class="button is-primary" type="submit">
+		      <span class="icon"><i class="fa-solid fa-key"></i></span>
+		      <span data-tx="t0113:8aa69c2">Δημιουργία token</span>
+		    </button>
+		  </p>
+		</div>
 	</form>
 
 	</div>
@@ -201,117 +250,57 @@
 
 <section class="section">
 	<div class="content">
-	<h2 data-tx="t0046" id="blacklist">Η μαύρη λίστα σας</h2>
-	
-	<form method="post" th:action="@{/update-settings(action='lists')}">
+	<h2 data-tx="t0126:ab5bb2af">Οι προσωπικές σας λίστες</h2>
 
-	<p data-tx="t0047" th:if="${blacklist.empty}">Δεν έχετε αποκλείσει ρητά κανέναν αριθμό. Για να μπλοκάρετε έναν αριθμό, αναζητήστε τον αριθμό χρησιμοποιώντας το παραπάνω πεδίο αναζήτησης και γράψτε ένα αρνητικό σχόλιο ή κάντε μια καταχώρηση στον τηλεφωνικό κατάλογο για τον αριθμό στη λίστα μπλοκαρίσματος στο Fritz!Box</p>
+	<p data-tx="t0127:b9b3bc88">Η προσωπική σας μαύρη και λευκή λίστα αποθηκεύονται στον διακομιστή και έχουν πάντα προτεραιότητα έναντι της βάσης δεδομένων της κοινότητας κατά τον έλεγχο του SPAM.</p>
 
-	<th:block th:unless="${blacklist.empty}">
-	<p data-tx="t0048">Έχετε αποκλείσει ρητά αυτούς τους αριθμούς. Μπορείτε να ακυρώσετε έναν τυχαίο αποκλεισμό εδώ:</p>
-	<div class="field" th:each="number : ${blacklist}">
-		<label class="checkbox" th:with="phoneInfo=${#converters.analyze(number)}">
-			<input th:name="|bl-${number}|" type="checkbox"/> <th:span th:text="${phoneInfo.shortcut}" th:title="${phoneInfo.plus}"></th:span>
-		</label>
-	</div>
+	<div class="columns">
+		<div class="column is-half">
+			<div class="box" id="blacklist">
+				<p class="title is-5" data-tx="t0128:9a0c4d13"><span class="icon has-text-danger"><i class="fa-solid fa-ban"></i></span> Μαύρη λίστα</p>
+				<p>
+					<th:block data-tx="t0129:60459b64" th:if="${blacklist.empty}">Δεν έχετε ακόμη αποκλείσει ρητά κανέναν αριθμό.</th:block>
+					<th:block data-tx="t0130:41d56bc1" th:unless="${blacklist.empty}">Έχετε αποκλείσει ρητά <strong th:text="${blacklist.size()}">0</strong> αριθμούς.</th:block>
+				</p>
+				<a class="button is-link is-outlined is-small mt-3" th:href="@{/blacklist}">
+					<span data-tx="t0131:ff15c393">Διαχείριση μαύρης λίστας</span>
+					<span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
+				</a>
+			</div>
+		</div>
 
-	<div class="field is-grouped">
-	  <p class="control">
-	    <button class="button is-danger" data-tx="t0049" type="submit">Διαγραφή</button>
-	  </p>
+		<div class="column is-half">
+			<div class="box" id="whitelist">
+				<p class="title is-5" data-tx="t0132:4df18e36"><span class="icon has-text-success"><i class="fa-solid fa-check"></i></span> Λευκή λίστα</p>
+				<p>
+					<th:block data-tx="t0133:cf551a9" th:if="${whitelist.empty}">Δεν έχετε ακόμη αποκλείσει κανέναν αριθμό από τον αποκλεισμό.</th:block>
+					<th:block data-tx="t0134:63daebcc" th:unless="${whitelist.empty}">Έχετε αποκλείσει τους αριθμούς <strong th:text="${whitelist.size()}">0</strong> από το μπλοκάρισμα.</th:block>
+				</p>
+				<a class="button is-link is-outlined is-small mt-3" th:href="@{/whitelist}">
+					<span data-tx="t0135:dd2108da">Διαχείριση λευκής λίστας</span>
+					<span class="icon"><i class="fa-solid fa-arrow-right"></i></span>
+				</a>
+			</div>
+		</div>
 	</div>
-	</th:block>
-		
-	</form>
-	</div>
-	
-	<div class="content">
-	<form method="post" th:action="@{/update-settings(action='lists')}">
-
-	<div class="field">
-	  <label class="label" data-tx="t0095">Αριθμός μπλοκ</label>
-	  <p class="control has-icons-left">
-	    <input class="input" data-tx="t0096" name="add-bl" placeholder="Νέος αριθμός SPAM" type="tel"/>
-	    <span class="icon is-small is-left" data-tx="t0097">☎</span>
-	  </p>
-	  <p class="help" data-tx="t0098">Μπορείτε να εισάγετε εδώ έναν ή περισσότερους τηλεφωνικούς αριθμούς SPAM, χωρισμένους με κόμμα, σε οποιαδήποτε μορφή: 07041-123456789, +49171123456789, 0034 123456789. Οι αριθμοί θα προστεθούν στη συνέχεια στην προσωπική σας λίστα αποκλεισμού.</p>
-	</div>
-	
-	<div class="field is-grouped">
-	  <p class="control">
-	    <button class="button is-primary" data-tx="t0099" type="submit">Προσθέστε</button>
-	  </p>
-	</div>
-	
-	</form>
-	</div>
-	
-</section>
-
-<section class="section">
-	<div class="content">
-	<h2 data-tx="t0050" id="whitelist">Η λευκή σας λίστα</h2>
-	
-	<form method="post" th:action="@{/update-settings(action='lists')}">
-
-	<p data-tx="t0051" th:if="${whitelist.empty}">Δεν έχετε αποκλείσει κανέναν αριθμό από τον αποκλεισμό.</p>
-
-	<th:block th:unless="${whitelist.empty}">
-	<p data-tx="t0052">Έχετε αποκλείσει ρητά αυτούς τους αριθμούς από τον αποκλεισμό:</p>
-
-	<div class="field" th:each="number : ${whitelist}">
-		<label class="checkbox" th:with="phoneInfo=${#converters.analyze(number)}">
-			<input th:name="|wl-${number}|" type="checkbox"/> <th:span th:text="${phoneInfo.shortcut}" th:title="${phoneInfo.plus}"></th:span>
-		</label>
-	</div>
-	
-	<div class="field is-grouped">
-	  <p class="control">
-	    <button class="button is-danger" data-tx="t0053" type="submit">Διαγραφή</button>
-	  </p>
-	</div>
-	</th:block>
-	
-	</form>
-	</div>
-	
-	<div class="content">
-	<form method="post" th:action="@{/update-settings(action='lists')}">
-
-	<div class="field">
-	  <label class="label" data-tx="t0054">Προσθήκη εξαίρεσης</label>
-	  <p class="control has-icons-left">
-	    <input class="input" data-tx="t0088" name="add-wl" placeholder="Νέα εξαίρεση" type="tel"/>
-	    <span class="icon is-small is-left" data-tx="t0055">☎</span>
-	  </p>
-	  <p class="help" data-tx="t0056">Μπορείτε να εισαγάγετε έναν ή περισσότερους τηλεφωνικούς αριθμούς χωρισμένους με κόμμα σε οποιαδήποτε μορφή: 07041-123456789, +49171123456789, 0034 123456789. Οι αριθμοί αυτοί δεν θα μπλοκάρονται πλέον.</p>
-	</div>
-	
-	<div class="field is-grouped">
-	  <p class="control">
-	    <button class="button is-primary" data-tx="t0057" type="submit">Προσθέστε</button>
-	  </p>
-	</div>
-	
-	</form>
 	</div>
 </section>
 
 <section class="section">
 <div class="content">
-	<h2 data-tx="t0058" id="sec-contributions">Οι δωρεές σας για τη λειτουργία του PhoneBlock</h2>
+	<h2 data-tx="t0058:8e777536" id="sec-contributions">Οι δωρεές σας για τη λειτουργία του PhoneBlock</h2>
 	
-	<p data-tx="t0059">Αν έχετε κάνει μια <a th:href="@{/support}">δωρεά για τη λειτουργία του PhoneBlock</a>, θα αναγράφεται εδώ (μετά από κάποιο χρονικό διάστημα). Για να λειτουργήσει αυτό, θα ήταν καλό να συμπεριλάβετε τους πρώτους χαρακτήρες του ονόματος χρήστη σας στο μήνυμα μεταφοράς, π.χ. <code dir="ltr" id="purpose" th:text="${supporterId}"></code><span class="copyToClipboard" data-tx="t0090" href="#" id="purpose_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></span>. Δυστυχώς, οι συνεισφορές μέσω του χορηγικού προγράμματος του GitHub δεν μπορούν να καταχωρηθούν εδώ.</p>
+	<p data-tx="t0059:5bf315a2">Αν έχετε κάνει μια <a th:href="@{/support}">δωρεά για τη λειτουργία του PhoneBlock</a>, θα αναγράφεται εδώ (μετά από κάποιο χρονικό διάστημα). Για να λειτουργήσει αυτό, θα ήταν καλό να συμπεριλάβετε τους πρώτους χαρακτήρες του ονόματος χρήστη σας στο μήνυμα μεταφοράς, π.χ. <code dir="ltr" id="purpose" th:text="${supporterId}"></code><span class="copyToClipboard" data-tx="t0090:3f7efe41" href="#" id="purpose_" title="Αντιγραφή στο πρόχειρο."><i class="fa-solid fa-copy"></i></span>. Δυστυχώς, οι συνεισφορές μέσω του χορηγικού προγράμματος του GitHub δεν μπορούν να καταχωρηθούν εδώ.</p>
 	
-	<p data-tx="t0060" th:if="${contributions.empty}">Δεν βρέθηκαν δωρεές.</p>
+	<p data-tx="t0060:5bf4088c" th:if="${contributions.empty}">Δεν βρέθηκαν δωρεές.</p>
 	
 	<th:block th:unless="${contributions.empty}">
 	<table class="table">
 	<thead>
 		<tr>
-			<th data-tx="t0061">ημερομηνία</th>
-			<th data-tx="t0062">Μήνυμα</th>
-			<th data-tx="t0063">Ποσό</th>
+			<th data-tx="t0061:73a7fbc0">ημερομηνία</th>
+			<th data-tx="t0062:4944d83c">Μήνυμα</th>
+			<th data-tx="t0063:151fc0c3">Ποσό</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -323,34 +312,34 @@
 	</tbody>
 	</table>
 	
-	<p data-tx="t0064">Σας ευχαριστούμε πολύ για τη συνεισφορά σας στο κόστος λειτουργίας του PhoneBlock!</p>	
+	<p data-tx="t0064:9559be26">Σας ευχαριστούμε πολύ για τη συνεισφορά σας στο κόστος λειτουργίας του PhoneBlock!</p>	
 	</th:block>
 </div>
 
 <nav class="panel is-info">
-	<p class="panel-heading"><a data-action="collapse" href="#contribForm"><i class="fa-solid fa-eraser"></i> <span data-tx="t0065">Έχετε χάσει μια πληρωμή;</span></a></p>
+	<p class="panel-heading"><a data-action="collapse" href="#contribForm"><i class="fa-solid fa-eraser"></i> <span data-tx="t0065:ec12e167">Έχετε χάσει μια πληρωμή;</span></a></p>
 	<div class="is-collapsible" id="contribForm">
 
 	<form enctype="application/x-www-form-urlencoded" method="post" th:action="@{/assign-contribution}">
 	<div class="panel-block">
 	<div class="content">
-		<p data-tx="t0066">Σας λείπει μια πληρωμή; Μπορείτε να αναζητήσετε μια πληρωμή εδώ. Εισάγετε το πλήρες όνομά σας (το οποίο χρησιμοποιεί η τράπεζά σας/PayPal ως αποστολέας) και την ημερομηνία της μεταφοράς:</p>
+		<p data-tx="t0066:76883029">Σας λείπει μια πληρωμή; Μπορείτε να αναζητήσετε μια πληρωμή εδώ. Εισάγετε το πλήρες όνομά σας (το οποίο χρησιμοποιεί η τράπεζά σας/PayPal ως αποστολέας) και την ημερομηνία της μεταφοράς:</p>
 	
 		<div class="field">
-		  <label class="label" data-tx="t0067">Αποστολέας</label>
+		  <label class="label" data-tx="t0067:fce43ee4">Αποστολέας</label>
 		  <p class="control has-icons-left">
-		    <input class="input" data-tx="t0089" name="contrib-name" placeholder="Max Mustermann" type="text"/>
+		    <input class="input" data-tx="t0089:2a2ec866" name="contrib-name" placeholder="Max Mustermann" type="text"/>
 		    <span class="icon is-small is-left"><i class="fa-regular fa-user"></i></span>
 		  </p>
-		  <p class="help" data-tx="t0068">Σε περίπτωση τραπεζικού εμβάσματος, το όνομα του κατόχου του λογαριασμού που πραγματοποίησε το έμβασμα. Παρακαλείστε επίσης να αναφέρετε την ημερομηνία της μεταφοράς παρακάτω.</p>
+		  <p class="help" data-tx="t0068:b7f565b6">Σε περίπτωση τραπεζικού εμβάσματος, το όνομα του κατόχου του λογαριασμού που πραγματοποίησε το έμβασμα. Παρακαλείστε επίσης να αναφέρετε την ημερομηνία της μεταφοράς παρακάτω.</p>
 		</div>
 	
 		<div class="field">
-		  <label class="label" data-tx="t0069">ημερομηνία</label>
+		  <label class="label" data-tx="t0069:73a7fbc0">ημερομηνία</label>
 		  <p class="control has-icons-left">
 		    <input class="input" name="contrib-date" type="date"/>
 		  </p>
-		  <p class="help" data-tx="t0070">Η ημερομηνία του τραπεζικού εμβάσματος. Παρακαλείστε επίσης να αναφέρετε το πλήρες όνομα του κατόχου του λογαριασμού που πραγματοποίησε την παραπάνω μεταφορά.</p>
+		  <p class="help" data-tx="t0070:99e4757b">Η ημερομηνία του τραπεζικού εμβάσματος. Παρακαλείστε επίσης να αναφέρετε το πλήρες όνομα του κατόχου του λογαριασμού που πραγματοποίησε την παραπάνω μεταφορά.</p>
 		</div>
 	</div>
 	</div>
@@ -360,7 +349,7 @@
 		    <span class="icon">
 				<i class="fa-solid fa-magnifying-glass-dollar"></i>
 		    </span>
-			<span data-tx="t0071">Συνεισφορά αναζήτησης</span>
+			<span data-tx="t0071:86083faf">Συνεισφορά αναζήτησης</span>
 		</button>
 	</div>
 
@@ -372,17 +361,17 @@
 
 <section class="section">
 	<div class="content">
-	<h2 data-tx="t0072">Ζώνη κινδύνου</h2>
-	<p data-tx="t0073">Χρησιμοποιήστε αυτή τη λειτουργία με προσοχή. Μπορεί να καταστρέψετε την εγκατάσταση του PhoneBlock με αυτήν!</p>
+	<h2 data-tx="t0072:47d9a31d">Ζώνη κινδύνου</h2>
+	<p data-tx="t0073:46d23ac6">Χρησιμοποιήστε αυτή τη λειτουργία με προσοχή. Μπορεί να καταστρέψετε την εγκατάσταση του PhoneBlock με αυτήν!</p>
 	</div>
 		
 <nav class="panel is-warning" id="resetPassword">
-	<p class="panel-heading"><a data-action="collapse" href="#resetForm"><i class="fa-solid fa-eraser"></i> <span data-tx="t0074">Δημιουργία νέου κωδικού πρόσβασης</span></a></p>
+	<p class="panel-heading"><a data-action="collapse" href="#resetForm"><i class="fa-solid fa-eraser"></i> <span data-tx="t0074:889c5574">Δημιουργία νέου κωδικού πρόσβασης</span></a></p>
 	<div class="is-collapsible" id="resetForm">
 		<form enctype="application/x-www-form-urlencoded" method="post" th:action="@{/reset-password}">
   		<div class="panel-block">
 	  		<div class="content">
-	  			<p data-tx="t0075">Προσοχή, αυτό θα ακυρώσει τον παλιό σας κωδικό πρόσβασης PhoneBlock. Στη συνέχεια, πρέπει να εισαγάγετε τον νέο κωδικό πρόσβασης στις ρυθμίσεις του Fritz!Box ή του κινητού σας τηλεφώνου, ώστε να είναι δυνατή η πρόσβαση στη λίστα αποκλεισμού.</p>
+	  			<p data-tx="t0075:5c042e35">Προσοχή, αυτό θα ακυρώσει τον παλιό σας κωδικό πρόσβασης PhoneBlock. Εάν δεν χρησιμοποιείτε ακόμα ένα token για να έχετε πρόσβαση στη λίστα αποκλεισμού σας, θα πρέπει στη συνέχεια να εισαγάγετε τον νέο κωδικό πρόσβασης στις ρυθμίσεις του FRITZ!Box ή του κινητού σας τηλεφώνου, ώστε να είναι δυνατή η πρόσβαση στη λίστα αποκλεισμού. Σε αυτή την περίπτωση, είναι προτιμότερο να διαγράψετε τον τηλεφωνικό κατάλογο στο FRITZ!Box και να τον ρυθμίσετε ξανά, διότι η ενημέρωση του κωδικού πρόσβασης δεν λειτουργεί αξιόπιστα.</p>
 	  		</div>
 	  	</div>
 	  	
@@ -391,7 +380,7 @@
 			    <span class="icon">
 					<i class="fa-solid fa-eraser"></i>
 			    </span>
-				<span data-tx="t0076">Επαναφορά κωδικού πρόσβασης</span>
+				<span data-tx="t0076:457c3a43">Επαναφορά κωδικού πρόσβασης</span>
 			</button>
   		</div>
   		</form>
@@ -399,12 +388,12 @@
 </nav>
 
 <nav class="panel is-warning">
-	<p class="panel-heading"><a data-action="collapse" href="#logoutForm"><i class="fa-solid fa-right-from-bracket"></i> <span data-tx="t0077">Αποσύνδεση από όλες τις συσκευές</span></a></p>
+	<p class="panel-heading"><a data-action="collapse" href="#logoutForm"><i class="fa-solid fa-right-from-bracket"></i> <span data-tx="t0077:ad62bbd">Αποσύνδεση από όλες τις συσκευές</span></a></p>
 	<div class="is-collapsible" id="logoutForm">
 		<form enctype="application/x-www-form-urlencoded" method="post" th:action="@{/logout(url=${contextPath + '/'},all=true)}">
   		<div class="panel-block">
 	  		<div class="content">
-	  			<p data-tx="t0078">Σας αποσυνδέει από όλες τις συσκευές για τις οποίες έχετε ενεργοποιήσει την επιλογή "Μείνετε συνδεδεμένοι σε αυτή τη συσκευή" κατά τη σύνδεση. Στην επόμενη επίσκεψή σας, θα πρέπει να συνδεθείτε ξανά σε όλες τις συσκευές. Χρησιμοποιήστε αυτή τη λειτουργία αποσύνδεσης αν έχετε ενεργοποιήσει κατά λάθος τη λειτουργία "Παραμονή συνδεδεμένων" σε δημόσιο υπολογιστή.</p>
+	  			<p data-tx="t0078:a1c4341c">Σας αποσυνδέει από όλες τις συσκευές για τις οποίες έχετε ενεργοποιήσει την επιλογή "Μείνετε συνδεδεμένοι σε αυτή τη συσκευή" κατά τη σύνδεση. Στην επόμενη επίσκεψή σας, θα πρέπει να συνδεθείτε ξανά σε όλες τις συσκευές. Χρησιμοποιήστε αυτή τη λειτουργία αποσύνδεσης αν έχετε ενεργοποιήσει κατά λάθος τη λειτουργία "Παραμονή συνδεδεμένων" σε δημόσιο υπολογιστή.</p>
 	  		</div>
 	  	</div>
 	  	
@@ -413,7 +402,7 @@
 			    <span class="icon">
 					<i class="fa-solid fa-right-from-bracket"></i>
 			    </span>
-				<span data-tx="t0079">Αποσύνδεση από παντού</span>
+				<span data-tx="t0079:4646847e">Αποσύνδεση από παντού</span>
 			</button>
   		</div>
   		</form>
@@ -421,12 +410,12 @@
 </nav>
 	
 <nav class="panel is-warning">
-	<p class="panel-heading"><a data-action="collapse" href="#quitForm"><i class="fa-solid fa-power-off"></i> <span data-tx="t0080">Διαγραφή λογαριασμού</span></a></p>
+	<p class="panel-heading"><a data-action="collapse" href="#quitForm"><i class="fa-solid fa-power-off"></i> <span data-tx="t0080:a95c6f94">Διαγραφή λογαριασμού</span></a></p>
 	<div class="is-collapsible" id="quitForm">
 		<form enctype="application/x-www-form-urlencoded" method="post" th:action="@{/delete-account}">
   		<div class="panel-block">
 	  		<div class="content">
-	  			<p data-tx="t0081">Προσοχή, όλα τα δεδομένα σας θα διαγραφούν. Δεν θα είναι πλέον δυνατή η ανάκτηση της λίστας αποκλεισμού ή η πρόσβαση στη βάση δεδομένων του PhoneBlock από οποιαδήποτε συσκευή σας!</p>
+	  			<p data-tx="t0081:d1ddc761">Προσοχή, όλα τα δεδομένα σας θα διαγραφούν. Δεν θα είναι πλέον δυνατή η ανάκτηση της λίστας αποκλεισμού ή η πρόσβαση στη βάση δεδομένων του PhoneBlock από οποιαδήποτε συσκευή σας!</p>
 	  		</div>
 	  	</div>
 	  	
@@ -435,7 +424,7 @@
 			    <span class="icon">
 					<i class="fa-solid fa-power-off"></i>
 			    </span>
-				<span data-tx="t0082">Διαγραφή πρόσβασης, καμία περαιτέρω έρευνα ασφαλείας!</span>
+				<span data-tx="t0082:4639073e">Διαγραφή πρόσβασης, καμία περαιτέρω έρευνα ασφαλείας!</span>
 			</button>
   		</div>
   		</form>

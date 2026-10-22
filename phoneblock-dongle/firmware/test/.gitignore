@@ -1,0 +1,4 @@
+# Compiled host-test binaries and objects (sources are kept).
+test_*
+!test_*.c
+*.o

@@ -1,15 +1,35 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head}"></head>
+<head th:replace="~{fragments/page :: head(titleKey=null, descriptionKey=null, titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
 
 <section class="section">
 <div class="content">
-	<h1 data-tx="t0001">Il numero di telefono ☎ <span th:text="${number}"></span> non esiste.</h1>
+	<h1 data-tx="t0001:657a0bf2">Il numero di telefono ☎ <span th:text="${number}"></span> non esiste.</h1>
 
-	<p data-tx="t0002">Il numero cercato non è un numero di telefono. Correggere la ricerca e riprovare!</p>
+	<p data-tx="t0002:d5692a3b">Il numero cercato non è un numero di telefono. Correggere la ricerca e riprovare!</p>
+
+	<h2 data-tx="t0003:379d2439">Formati di ricerca supportati</h2>
+
+	<p data-tx="t0004:c262e767">È possibile inserire i numeri di telefono in vari formati:</p>
+
+	<ul>
+		<li><strong data-tx="t0005:6c2339bd">Ortografia internazionale con +:</strong> <code>+49 30 12345678</code></li>
+		<li>
+			<strong data-tx="t0010:11db8a31">Notazione internazionale con <span th:text="${internationalPrefix}">00</span>:</strong>
+			<code><span th:text="${internationalPrefix}">00</span>49 30 12345678</code>
+		</li>
+		<li data-tx="t0011:ddfb97e5"><strong>Sillabazione nazionale:</strong> <code><span th:text="${trunkPrefix}">0</span>30 12345678</code> (in base al vostro attuale prefisso)</li>
+	</ul>
+
+	<div class="notification is-info">
+		<p>
+			<strong data-tx="t0008:3be3cc00">Il vostro attuale prefisso telefonico:</strong> <span th:text="${currentDialPrefix}">+49</span>
+		</p>
+		<p data-tx="t0009:369b0717">💡 Se si è <a th:href="@{/login}">logati</a>, è possibile configurare in modo permanente il proprio prefisso telefonico nelle <a th:href="@{/settings}">impostazioni</a>. In questo modo si garantisce la corretta interpretazione dei numeri telefonici nazionali.</p>
+	</div>
 </div>
 </section>
 

@@ -48,7 +48,7 @@ public class AssignContributionServlet extends HttpServlet {
 	
 	@Override
 	protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-		String userName = LoginFilter.getAuthenticatedUser(req.getSession(false));
+		String userName = LoginFilter.getAuthenticatedUser(req);
 		if (userName == null) {
 			showSettings(req, resp);
 			return;
@@ -76,14 +76,15 @@ public class AssignContributionServlet extends HttpServlet {
 							
 							tryAssignContribution(session, users, contribution, userId);
 						} else {
-							LOG.warn("No unique contribution found ({}) for {}: name={}, date={}/{}", 
-									contributions.size(), userName, name, date, received);
+							LOG.warn("No unique contribution found ({} matches) for user {} (name length {}).",
+									contributions.size(), userId, name.length());
 						}
 					} catch (ParseException e) {
-						LOG.warn("Invalid date received from {}: date={}", userName, date);
+						LOG.warn("Invalid date received from user {} (length {}).", userId, date.length());
 					}
 				} else {
-					LOG.warn("Missing information to assign contribution to {}: name={}, date={}", userName, name, date);
+					LOG.warn("Missing information to assign contribution to user {}: name given={}, date given={}.", userId,
+							name != null && !name.isBlank(), date != null && !date.isBlank());
 				}
 			}
 		}

@@ -83,6 +83,7 @@ abstract class SetupRequest extends _JsonObject {
 			case "CheckAnswerBot": result = CheckAnswerBot(); break;
 			case "ListCalls": result = ListCalls(); break;
 			case "ClearCallList": result = ClearCallList(); break;
+			case "SetRetentionPolicy": result = SetRetentionPolicy(); break;
 			default: result = null;
 		}
 
@@ -113,9 +114,9 @@ class CreateAnswerbotResponse extends _JsonObject {
 
 	/// Creates a CreateAnswerbotResponse.
 	CreateAnswerbotResponse({
-			this.id = 0, 
-			this.userName = "", 
-			this.password = "", 
+			this.id = 0,
+			this.userName = "",
+			this.password = "",
 	});
 
 	/// Parses a CreateAnswerbotResponse from a string source.
@@ -204,6 +205,7 @@ abstract class BotRequestVisitor<R, A> {
 	R visitCheckAnswerBot(CheckAnswerBot self, A arg);
 	R visitListCalls(ListCalls self, A arg);
 	R visitClearCallList(ClearCallList self, A arg);
+	R visitSetRetentionPolicy(SetRetentionPolicy self, A arg);
 }
 
 ///  Base class for all requests targeting a single answer bot.
@@ -213,7 +215,7 @@ abstract class BotRequest extends SetupRequest {
 
 	/// Creates a BotRequest.
 	BotRequest({
-			this.id = 0, 
+			this.id = 0,
 	});
 
 	/// Parses a BotRequest from a string source.
@@ -241,6 +243,7 @@ abstract class BotRequest extends SetupRequest {
 			case "CheckAnswerBot": result = CheckAnswerBot(); break;
 			case "ListCalls": result = ListCalls(); break;
 			case "ClearCallList": result = ClearCallList(); break;
+			case "SetRetentionPolicy": result = SetRetentionPolicy(); break;
 			default: result = null;
 		}
 
@@ -290,8 +293,8 @@ class EnterHostName extends BotRequest {
 
 	/// Creates a EnterHostName.
 	EnterHostName({
-			super.id, 
-			this.hostName = "", 
+			super.id,
+			this.hostName = "",
 	});
 
 	/// Parses a EnterHostName from a string source.
@@ -339,8 +342,8 @@ class SetupDynDns extends BotRequest {
 
 	/// Creates a SetupDynDns.
 	SetupDynDns({
-			super.id, 
-			this.hostName = "", 
+			super.id,
+			this.hostName = "",
 	});
 
 	/// Parses a SetupDynDns from a string source.
@@ -393,10 +396,10 @@ class SetupDynDnsResponse extends _JsonObject {
 
 	/// Creates a SetupDynDnsResponse.
 	SetupDynDnsResponse({
-			this.id = 0, 
-			this.dyndnsUser = "", 
-			this.dyndnsPassword = "", 
-			this.dyndnsDomain = "", 
+			this.id = 0,
+			this.dyndnsUser = "",
+			this.dyndnsPassword = "",
+			this.dyndnsDomain = "",
 	});
 
 	/// Parses a SetupDynDnsResponse from a string source.
@@ -460,7 +463,7 @@ class SetupDynDnsResponse extends _JsonObject {
 class CheckDynDns extends BotRequest {
 	/// Creates a CheckDynDns.
 	CheckDynDns({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a CheckDynDns from a string source.
@@ -497,13 +500,17 @@ class UpdateAnswerBot extends BotRequest {
 	///  Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected.
 	bool wildcards;
 
+	///  Whether to accept calls from local phones (numbers starting with *).
+	bool acceptLocal;
+
 	/// Creates a UpdateAnswerBot.
 	UpdateAnswerBot({
-			super.id, 
-			this.enabled = false, 
-			this.preferIPv4 = false, 
-			this.minVotes = 0, 
-			this.wildcards = false, 
+			super.id,
+			this.enabled = false,
+			this.preferIPv4 = false,
+			this.minVotes = 0,
+			this.wildcards = false,
+			this.acceptLocal = false,
 	});
 
 	/// Parses a UpdateAnswerBot from a string source.
@@ -540,6 +547,10 @@ class UpdateAnswerBot extends BotRequest {
 				wildcards = json.expectBool();
 				break;
 			}
+			case "acceptLocal": {
+				acceptLocal = json.expectBool();
+				break;
+			}
 			default: super._readProperty(key, json);
 		}
 	}
@@ -559,6 +570,9 @@ class UpdateAnswerBot extends BotRequest {
 
 		json.addKey("wildcards");
 		json.addBool(wildcards);
+
+		json.addKey("acceptLocal");
+		json.addBool(acceptLocal);
 	}
 
 	@override
@@ -570,7 +584,7 @@ class UpdateAnswerBot extends BotRequest {
 class EnableAnswerBot extends BotRequest {
 	/// Creates a EnableAnswerBot.
 	EnableAnswerBot({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a EnableAnswerBot from a string source.
@@ -597,7 +611,7 @@ class EnableAnswerBot extends BotRequest {
 class DisableAnswerBot extends BotRequest {
 	/// Creates a DisableAnswerBot.
 	DisableAnswerBot({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a DisableAnswerBot from a string source.
@@ -624,7 +638,7 @@ class DisableAnswerBot extends BotRequest {
 class DeleteAnswerBot extends BotRequest {
 	/// Creates a DeleteAnswerBot.
 	DeleteAnswerBot({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a DeleteAnswerBot from a string source.
@@ -651,7 +665,7 @@ class DeleteAnswerBot extends BotRequest {
 class CheckAnswerBot extends BotRequest {
 	/// Creates a CheckAnswerBot.
 	CheckAnswerBot({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a CheckAnswerBot from a string source.
@@ -678,7 +692,7 @@ class CheckAnswerBot extends BotRequest {
 class ListCalls extends BotRequest {
 	/// Creates a ListCalls.
 	ListCalls({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a ListCalls from a string source.
@@ -714,9 +728,9 @@ class ListCallsResponse extends _JsonObject {
 
 	/// Creates a ListCallsResponse.
 	ListCallsResponse({
-			this.callsAnswered = 0, 
-			this.talkTime = 0, 
-			this.calls = const [], 
+			this.callsAnswered = 0,
+			this.talkTime = 0,
+			this.calls = const [],
 	});
 
 	/// Parses a ListCallsResponse from a string source.
@@ -795,9 +809,9 @@ class CallInfo extends _JsonObject {
 
 	/// Creates a CallInfo.
 	CallInfo({
-			this.caller = "", 
-			this.started = 0, 
-			this.duration = 0, 
+			this.caller = "",
+			this.started = 0,
+			this.duration = 0,
 	});
 
 	/// Parses a CallInfo from a string source.
@@ -870,6 +884,9 @@ class AnswerbotInfo extends _JsonObject {
 	///  Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected.
 	bool wildcards;
 
+	///  Whether to accept calls from local phones (numbers starting with *).
+	bool acceptLocal;
+
 	///  Whether the bot has sucessfully registered (can accept calls).
 	bool registered;
 
@@ -912,28 +929,33 @@ class AnswerbotInfo extends _JsonObject {
 		///  The password for DynDNS registration of the box.
 		String? dyndnsPassword;
 
+		///  The retention period for automatic call cleanup (NEVER, WEEK, MONTH, QUARTER, YEAR).
+		RetentionPeriod retentionPeriod;
+
 		/// Creates a AnswerbotInfo.
 		AnswerbotInfo({
-				this.id = 0, 
-				this.userId = 0, 
-				this.enabled = false, 
-				this.preferIPv4 = false, 
-				this.minVotes = 0, 
-				this.wildcards = false, 
-				this.registered = false, 
-				this.registerMsg, 
-				this.newCalls = 0, 
-				this.callsAccepted = 0, 
-				this.talkTime = 0, 
-				this.registrar = "", 
-				this.realm = "", 
-				this.userName = "", 
-				this.password = "", 
-				this.host, 
-				this.ip4, 
-				this.ip6, 
-				this.dyndnsUser, 
-				this.dyndnsPassword, 
+				this.id = 0,
+				this.userId = 0,
+				this.enabled = false,
+				this.preferIPv4 = false,
+				this.minVotes = 0,
+				this.wildcards = false,
+				this.acceptLocal = false,
+				this.registered = false,
+				this.registerMsg,
+				this.newCalls = 0,
+				this.callsAccepted = 0,
+				this.talkTime = 0,
+				this.registrar = "",
+				this.realm = "",
+				this.userName = "",
+				this.password = "",
+				this.host,
+				this.ip4,
+				this.ip6,
+				this.dyndnsUser,
+				this.dyndnsPassword,
+				this.retentionPeriod = RetentionPeriod.never,
 		});
 
 		/// Parses a AnswerbotInfo from a string source.
@@ -976,6 +998,10 @@ class AnswerbotInfo extends _JsonObject {
 				}
 				case "wildcards": {
 					wildcards = json.expectBool();
+					break;
+				}
+				case "acceptLocal": {
+					acceptLocal = json.expectBool();
 					break;
 				}
 				case "registered": {
@@ -1034,6 +1060,10 @@ class AnswerbotInfo extends _JsonObject {
 					dyndnsPassword = json.expectString();
 					break;
 				}
+				case "retentionPeriod": {
+					retentionPeriod = readRetentionPeriod(json);
+					break;
+				}
 				default: super._readProperty(key, json);
 			}
 		}
@@ -1059,6 +1089,9 @@ class AnswerbotInfo extends _JsonObject {
 
 			json.addKey("wildcards");
 			json.addBool(wildcards);
+
+			json.addKey("acceptLocal");
+			json.addBool(acceptLocal);
 
 			json.addKey("registered");
 			json.addBool(registered);
@@ -1119,6 +1152,9 @@ class AnswerbotInfo extends _JsonObject {
 				json.addKey("dyndnsPassword");
 				json.addString(_dyndnsPassword);
 			}
+
+			json.addKey("retentionPeriod");
+			writeRetentionPeriod(json, retentionPeriod);
 		}
 
 	}
@@ -1127,7 +1163,7 @@ class AnswerbotInfo extends _JsonObject {
 class ClearCallList extends BotRequest {
 	/// Creates a ClearCallList.
 	ClearCallList({
-			super.id, 
+			super.id,
 	});
 
 	/// Parses a ClearCallList from a string source.
@@ -1150,6 +1186,94 @@ class ClearCallList extends BotRequest {
 
 }
 
+///  Sets the retention policy for automatic call cleanup.
+class SetRetentionPolicy extends BotRequest {
+	///  The retention period (NEVER, WEEK, MONTH, QUARTER, YEAR).
+	RetentionPeriod period;
+
+	/// Creates a SetRetentionPolicy.
+	SetRetentionPolicy({
+			super.id,
+			this.period = RetentionPeriod.never,
+	});
+
+	/// Parses a SetRetentionPolicy from a string source.
+	static SetRetentionPolicy? fromString(String source) {
+		return read(JsonReader.fromString(source));
+	}
+
+	/// Reads a SetRetentionPolicy instance from the given reader.
+	static SetRetentionPolicy read(JsonReader json) {
+		SetRetentionPolicy result = SetRetentionPolicy();
+		result._readContent(json);
+		return result;
+	}
+
+	@override
+	String _jsonType() => "SetRetentionPolicy";
+
+	@override
+	void _readProperty(String key, JsonReader json) {
+		switch (key) {
+			case "period": {
+				period = readRetentionPeriod(json);
+				break;
+			}
+			default: super._readProperty(key, json);
+		}
+	}
+
+	@override
+	void _writeProperties(JsonSink json) {
+		super._writeProperties(json);
+
+		json.addKey("period");
+		writeRetentionPeriod(json, period);
+	}
+
+	@override
+	R visitBotRequest<R, A>(BotRequestVisitor<R, A> v, A arg) => v.visitSetRetentionPolicy(this, arg);
+
+}
+
+///  Specification when old calls should be deleted automatically.
+enum RetentionPeriod {
+	///  Never delete calls automatically
+	never,
+	///  Delete calls older than one week
+	week,
+	///  Delete calls older than one month
+	month,
+	///  Delete calls older than three months
+	quarter,
+	///  Delete calls older than one year
+	year,
+}
+
+/// Writes a value of RetentionPeriod to a JSON stream.
+void writeRetentionPeriod(JsonSink json, RetentionPeriod value) {
+	switch (value) {
+		case RetentionPeriod.never: json.addString("NEVER"); break;
+		case RetentionPeriod.week: json.addString("WEEK"); break;
+		case RetentionPeriod.month: json.addString("MONTH"); break;
+		case RetentionPeriod.quarter: json.addString("QUARTER"); break;
+		case RetentionPeriod.year: json.addString("YEAR"); break;
+		default: throw ("No such literal: " + value.name);
+	}
+}
+
+/// Reads a value of RetentionPeriod from a JSON stream.
+RetentionPeriod readRetentionPeriod(JsonReader json) {
+	switch (json.expectString()) {
+		case "NEVER": return RetentionPeriod.never;
+		case "WEEK": return RetentionPeriod.week;
+		case "MONTH": return RetentionPeriod.month;
+		case "QUARTER": return RetentionPeriod.quarter;
+		case "YEAR": return RetentionPeriod.year;
+		default: return RetentionPeriod.never;
+	}
+}
+
 ///  Result of the {@link de.haumacher.phoneblock.ab.ListABServlet}.
 class ListAnswerbotResponse extends _JsonObject {
 	///  Infos for all answer bots of the current user.
@@ -1157,7 +1281,7 @@ class ListAnswerbotResponse extends _JsonObject {
 
 	/// Creates a ListAnswerbotResponse.
 	ListAnswerbotResponse({
-			this.bots = const [], 
+			this.bots = const [],
 	});
 
 	/// Parses a ListAnswerbotResponse from a string source.

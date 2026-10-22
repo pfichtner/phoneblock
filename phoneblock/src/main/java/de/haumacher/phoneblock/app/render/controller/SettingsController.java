@@ -16,6 +16,7 @@ import de.haumacher.phoneblock.db.DBAuthToken;
 import de.haumacher.phoneblock.db.DBContribution;
 import de.haumacher.phoneblock.db.DBService;
 import de.haumacher.phoneblock.db.Users;
+import de.haumacher.phoneblock.db.settings.AuthToken;
 import de.haumacher.phoneblock.db.settings.UserSettings;
 import de.haumacher.phoneblock.location.Countries;
 import de.haumacher.phoneblock.location.model.Country;
@@ -57,14 +58,27 @@ public class SettingsController extends RequireLoginController {
 	}
 
 	@Override
+	protected boolean checkAccessRights(AuthToken authorization) {
+		return authorization.isAccessLogin();
+	}
+	
+	@Override
 	protected void fillContext(WebContext ctx, HttpServletRequest request) {
 		super.fillContext(ctx, request);
-		
-		
+
+		String userName = LoginFilter.getAuthenticatedUser(request);
+		UserSettings settings = LoginFilter.getUserSettings(request);
+
+		// Check for success message from session and move to request scope
 		HttpSession httpSession = request.getSession(false);
-		String userName = LoginFilter.getAuthenticatedUser(httpSession);
-		UserSettings settings = DBService.getInstance().getSettings(userName);
-		
+		if (httpSession != null) {
+			String settingsMessage = (String) httpSession.getAttribute("settingsMessage");
+			if (settingsMessage != null) {
+				request.setAttribute("settingsMessage", settingsMessage);
+				httpSession.removeAttribute("settingsMessage");
+			}
+		}
+
 		request.setAttribute("settings", settings);
 		request.setAttribute("dialPrefixes", DIAL_PREFIXES);
 		

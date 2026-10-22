@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head th:replace="~{fragments/page :: head(titleKey='page.festnetz.title', descriptionKey='page.festnetz.description', titleText=null, descriptionText=null)}"></head>
+
+<body th:dir="${currentLang.direction}">
+<div th:replace="~{fragments/page :: header(location=${currentPage})}"></div>
+
+<section class="section">
+	<div class="content">
+		<h1 data-tx="t0001:fa239257">Block spam in the fixed network</h1>
+
+		<p class="subtitle" data-tx="t0002:f50c45ab">There are three ways to block commercial calls on your landline - all three use the same spam database maintained by the PhoneBlock community, but differ significantly in terms of effort, effect and requirements for your connection. This page will help you choose.</p>
+
+		<div class="box festnetz-wizard" id="festnetzWizard">
+			<h2 class="title is-4" data-tx="t0053:c661ec28">Which variant suits you?</h2>
+			<p data-tx="t0054:44e93c3">Three quick questions and you'll know which options are right for your connection.</p>
+
+			<div class="wizard-step" data-step="router">
+				<p class="title is-5 mt-4" data-tx="t0055:e9de74b1">1. which router model do you have?</p>
+				<div class="buttons">
+					<button class="button is-info wizard-btn" data-route="fritzbox" type="button">
+						<span class="icon"><i class="fa-solid fa-network-wired"></i></span>
+						<span data-tx="t0056:cbc40c39">Fritz!Box</span>
+					</button>
+					<button class="button is-info wizard-btn" data-route="other" type="button">
+						<span class="icon"><i class="fa-solid fa-router"></i></span>
+						<span data-tx="t0057:9ddca9ce">Other router (Speedport, ...)</span>
+					</button>
+				</div>
+			</div>
+
+			<div class="wizard-step" data-step="ownership" hidden="hidden">
+				<p class="title is-5 mt-4" data-tx="t0058:b5160124">2. own Fritz! box or rented from the provider?</p>
+				<p class="help" data-tx="t0059:fe71ab83">With a rental box, the provider can block the registration of telephones from the Internet (e.g. Vodafone) - the cloud answering machine is therefore no longer available.</p>
+				<div class="buttons">
+					<button class="button is-info wizard-btn" data-route="own" type="button">
+						<span class="icon"><i class="fa-solid fa-house"></i></span>
+						<span data-tx="t0060:9fdfe3d6">Own Fritz!Box</span>
+					</button>
+					<button class="button is-info wizard-btn" data-route="rental" type="button">
+						<span class="icon"><i class="fa-solid fa-handshake"></i></span>
+						<span data-tx="t0061:f20dd83b">Rented Fritz!Box</span>
+					</button>
+				</div>
+			</div>
+
+			<div class="wizard-step" data-step="age" hidden="hidden">
+				<p class="title is-5 mt-4" data-tx="t0062:88f1b45d">3. how old is your Fritz! box?</p>
+				<p class="help" data-tx="t0063:34e286b1">Models from 2018 with FRITZ!OS 7 or newer have CardDAV support - a prerequisite for the blocklist phone book.</p>
+				<div class="buttons">
+					<button class="button is-info wizard-btn" data-route="modern" type="button">
+						<span class="icon"><i class="fa-solid fa-circle-check"></i></span>
+						<span data-tx="t0064:59be671a">Year 2018 or newer (FRITZ!OS 7+)</span>
+					</button>
+					<button class="button is-info wizard-btn" data-route="old" type="button">
+						<span class="icon"><i class="fa-solid fa-circle-question"></i></span>
+						<span data-tx="t0065:7bd456ae">Older or don't know</span>
+					</button>
+				</div>
+			</div>
+
+			<div class="wizard-step" data-step="provider" hidden="hidden">
+				<p class="title is-5 mt-4" data-tx="t0066:59312a9">2. which telephony provider?</p>
+				<p class="help" data-tx="t0067:2d02529f">Some providers allow direct VoIP device registration on their infrastructure - in this case the Phoneblock dongle works even if the router does not support VOIP telephones.</p>
+				<div class="buttons">
+					<button class="button is-info wizard-btn" data-route="telekom" type="button">
+						<span data-tx="t0068:fc2c352d">Telecom</span>
+					</button>
+					<button class="button is-info wizard-btn" data-route="vodafone" type="button">
+						<span data-tx="t0069:780f436c">Vodafone</span>
+					</button>
+					<button class="button is-info wizard-btn" data-route="other-isp" type="button">
+						<span data-tx="t0070:19bcf9a0">1&amp;1 / O2 / Other</span>
+					</button>
+				</div>
+			</div>
+
+			<div class="wizard-result" data-result="all-three" hidden="hidden">
+				<div class="notification is-success">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-check"></i></span> <span data-tx="t0071:aeb1936">All three variants work for you.</span></p>
+					<p data-tx="t0072:3617ea57">Recommended: <strong>PhoneBlock dongle</strong> - best defense, best data protection, independent of router updates. <strong>Cloud answering machine</strong> or <strong>blocklist phonebook</strong> are also possible.</p>
+				</div>
+
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="dongle-cloudab" hidden="hidden">
+				<div class="notification is-success">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-check"></i></span> <span data-tx="t0073:cf37f033">Phoneblock dongle and cloud answering machine fit.</span></p>
+					<p data-tx="t0074:416ac031">Recommended: <strong>PhoneBlock dongle</strong>. Alternatively: <strong>Cloud answering machine</strong>. The <strong>Blocklist phonebook</strong> requires a Fritz!Box from 2018 and is not available for your box.</p>
+				</div>
+
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="dongle-blockliste" hidden="hidden">
+				<div class="notification is-success">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-check"></i></span> <span data-tx="t0075:783c2af2">Phoneblock dongle and blocklist phonebook fit.</span></p>
+					<p data-tx="t0076:43e00ed6">Recommended: <strong>PhoneBlock dongle</strong>. Alternatively: <strong>Blocklist phonebook</strong>. You cannot set up the <strong>Cloud answering machine</strong> on a rental Fritz!Box - you need access to the VoIP telephony configuration.</p>
+				</div>
+				
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="dongle-only" hidden="hidden">
+				<div class="notification is-success">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-check"></i></span> <span data-tx="t0077:6552580a">The Phoneblock dongle is your variant.</span></p>
+					<p data-tx="t0078:cbd60954">The <strong>PhoneBlock dongle</strong> works with your configuration - the other two variants fail: Cloud answering machine needs Fritz!Box with login from the Internet, the blocklist phone book needs a Fritz!Box from 2018 onwards.</p>
+				</div>
+				
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="dongle-telekom" hidden="hidden">
+				<div class="notification is-success">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-check"></i></span> <span data-tx="t0079:fdb4f4a9">The Phoneblock dongle works for you.</span></p>
+					<p data-tx="t0080:1938636f">Telekom allows direct VoIP device registration on its infrastructure - the <strong>PhoneBlock dongle</strong> registers there, the router does not matter. Cloud answering machine and blocklist phone book require a Fritz!Box and are not available.</p>
+				</div>
+				
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="dongle-other-isp" hidden="hidden">
+				<div class="notification is-info">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-circle-info"></i></span> <span data-tx="t0081:3acafd67">Probably the Phoneblock dongle - please check with your provider.</span></p>
+					<p data-tx="t0082:b2d14a7b">Without a Fritz!Box, only the <strong>PhoneBlock dongle</strong> is an option, and your provider must allow direct SIP device registration for this. If in doubt, ask your provider support or pre-connect your own Fritz!Box - then the selection is free again.</p>
+				</div>
+				
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<div class="wizard-result" data-result="vodafone-deadend" hidden="hidden">
+				<div class="notification is-warning">
+					<p class="title is-5"><span class="icon"><i class="fa-solid fa-triangle-exclamation"></i></span> <span data-tx="t0083:9edc79ef">Unfortunately, PhoneBlock has no chance with this constellation.</span></p>
+					<p data-tx="t0084:70dc4cbf">Vodafone blocks direct SIP device registration, and without a Fritz!Box there is no telephony endpoint for the other variants. <strong>Recommendation:</strong> Hang your own Fritz!Box behind the Vodafone box (bridge mode / cable modem mode) - then all three variants will work. You can then run the wizard again.</p>
+				</div>
+
+				<div th:replace="~{fragments/page :: festnetz_options}"></div>
+			</div>
+
+			<p class="wizard-restart mt-4" hidden="hidden">
+				<a class="button is-light is-small" href="#festnetzWizard">
+					<span class="icon"><i class="fa-solid fa-rotate-left"></i></span>
+					<span data-tx="t0085:675cadf4">Reset answers</span>
+				</a>
+			</p>
+		</div>
+
+		<script th:src="@{/assets/js/festnetz-wizard.js(v=1)}" type="text/javascript"></script>
+
+		<h2 data-tx="t0003:755fe635">Comparison: Three ways to block landline spam</h2>
+
+		<div class="table-container">
+			<table class="table is-fullwidth is-striped">
+				<thead>
+					<tr>
+						<th></th>
+						<th data-tx="t0004:ad5f557f">PhoneBlock dongle</th>
+						<th data-tx="t0005:1cdaad3">Cloud answering machine</th>
+						<th data-tx="t0006:b7a22f37">Blocklist phonebook</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td><strong data-tx="t0007:ebecddaf">Effectiveness</strong></td>
+						<td data-tx="t0008:df4b4973"><span class="icon has-text-success"><i class="fas fa-bolt"></i></span> Maximum, entire block list</td>
+						<td data-tx="t0009:df4b4973"><span class="icon has-text-success"><i class="fas fa-bolt"></i></span> Maximum, entire block list</td>
+						<td data-tx="t0010:8af26113"><span class="icon has-text-warning"><i class="fas fa-sync"></i></span> Good, but only a small section of the block list, sync ≤ 1 ×/day</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0011:984ebad2">Prerequisites</strong></td>
+						<td data-tx="t0012:e372dde7"><span class="icon has-text-success"><i class="fas fa-globe"></i></span> Almost any router/provider combination</td>
+						<td data-tx="t0013:956188d1"><span class="icon has-text-warning"><i class="fas fa-server"></i></span> Only own Fritz!Box (no provider rental box)</td>
+						<td data-tx="t0014:120e2e30"><span class="icon has-text-warning"><i class="fas fa-wifi"></i></span> Newer Fritz!Box with CardDAV</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0015:5f4450bc">Data protection</strong></td>
+						<td data-tx="t0016:1d9445c1"><span class="icon has-text-success"><i class="fas fa-shield-halved"></i></span> Optimal; Local call handling; Only hash matching for unknown callers</td>
+						<td data-tx="t0017:b26fbac9"><span class="icon has-text-danger"><i class="fas fa-cloud"></i></span> Problematic; signaling of every call (also from contacts) runs via PhoneBlock server</td>
+						<td data-tx="t0018:2452770"><span class="icon has-text-success"><i class="fas fa-shield-halved"></i></span> Optimal; nothing leaves the router</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0019:83c9a19b">Setup effort</strong></td>
+						<td data-tx="t0020:4e6c7d5d"><span class="icon has-text-success"><i class="fas fa-star"></i></span> Plug &amp; Play</td>
+						<td data-tx="t0021:45c38866"><span class="icon has-text-warning"><i class="fas fa-gear"></i></span> up (automatically with PhoneBlock Mobile App)</td>
+						<td data-tx="t0022:e51ea302"><span class="icon has-text-warning"><i class="fas fa-gear"></i></span> moderate</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0023:e66ba2b">Additional hardware</strong></td>
+						<td data-tx="t0024:301e2ef7"><span class="icon has-text-info"><i class="fa-solid fa-coins"></i></span> USB dongle, approx. 10 €</td>
+						<td data-tx="t0025:fe8232e3"><span class="icon has-text-success"><i class="fas fa-cloud"></i></span> None (cloud service)</td>
+						<td data-tx="t0026:4d86e32e"><span class="icon has-text-success"><i class="fas fa-check"></i></span> None (integrated in Fritz!Box)</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0027:9e08101d">Phone remains completely silent during spam</strong></td>
+						<td data-tx="t0028:74f7490d"><span class="icon has-text-success"><i class="fas fa-check"></i></span> Yes</td>
+						<td data-tx="t0029:74f7490d"><span class="icon has-text-success"><i class="fas fa-check"></i></span> Yes</td>
+						<td data-tx="t0030:7b5cfc02"><span class="icon has-text-success"><i class="fas fa-check"></i></span> Optionally lock or display only</td>
+					</tr>
+					<tr>
+						<td><strong data-tx="t0031:f4c95d3e">Actively employ spammers</strong></td>
+						<td data-tx="t0032:fc6557f4"><span class="icon has-text-danger"><i class="fas fa-times"></i></span> No - briefly waved off</td>
+						<td data-tx="t0033:cafb9dda"><span class="icon has-text-success"><i class="fas fa-comments"></i></span> Yes - involved in dialog</td>
+						<td data-tx="t0034:1b0bf702"><span class="icon has-text-danger"><i class="fas fa-times"></i></span> No - call is blocked</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+
+		<div class="notification is-info mt-4">
+			<p><strong data-tx="t0035:8125e3d9">Which solution suits you?</strong></p>
+			<ul>
+				<li data-tx="t0036:7f445021"><strong>Phoneblock dongle</strong> - if you want optimum SPAM protection with the best data protection, regardless of router model and provider.</li>
+				<li data-tx="t0037:263869ed"><strong>Cloud answering machine</strong> - if you have your own Fritz!Box (not a rental box) and accept that all your calls are checked by the PhoneBlock server for optimal SPAM defense.</li>
+				<li data-tx="t0038:d89599d7"><strong>Blocklist phonebook</strong> - if you have a Fritz!Box (also a rental box) and don't mind if a spammer who is actually on the blocklist slips through every now and then.</li>
+			</ul>
+		</div>
+
+		<h2 class="mt-6" data-tx="t0039:aeafcde8">I have decided - here we go</h2>
+
+		<div class="columns is-multiline is-desktop">
+			<div class="column">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-4">
+							<span class="icon-text">
+								<span class="icon has-text-primary"><i class="fa-brands fa-usb"></i></span>
+								<span data-tx="t0040:1e211e8a">Phoneblock dongle</span>
+							</span>
+						</p>
+						<p class="subtitle is-6 has-text-grey" data-tx="t0041:3a1686ef">Recommended - best defense, best data protection</p>
+						<p data-tx="t0042:ae11194">Thumb-sized USB stick in the router. Answering machine in IP telephone format, blocks spam locally in your home. Hardware approx. 10 €, setup in the browser.</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-primary is-medium" th:href="@{/dongle}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0043:26d7229c">To the Phoneblock dongle</span>
+						</a>
+					</footer>
+				</div>
+			</div>
+
+			<div class="column">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-4">
+							<span class="icon-text">
+								<span class="icon has-text-info"><i class="fa-solid fa-voicemail"></i></span>
+								<span data-tx="t0045:1cdaad3">Cloud answering machine</span>
+							</span>
+						</p>
+						<p class="subtitle is-6 has-text-grey" data-tx="t0046:61de7fcf">Engage spammers in pointless dialogs</p>
+						<p data-tx="t0047:21db9fe">Uses your Fritz!Box as a VoIP registrar. PhoneBlock accepts spam calls and keeps callers busy. Prerequisite: your own Fritz! box (not a rental box).</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-info is-medium" th:href="@{/anrufbeantworter}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0048:f2463c71">To the cloud answering machine</span>
+						</a>
+					</footer>
+				</div>
+			</div>
+
+			<div class="column">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-4">
+							<span class="icon-text">
+								<span class="icon has-text-info"><i class="fa-solid fa-filter-circle-xmark"></i></span>
+								<span data-tx="t0049:b7a22f37">Blocklist phonebook</span>
+							</span>
+						</p>
+						<p class="subtitle is-6 has-text-grey" data-tx="t0050:ae13b6e9">Without additional hardware, directly in the Fritz!</p>
+						<p data-tx="t0051:c00621dd">Imports the block list as a phone book into your Fritz! Nothing leaves the router. Also works with provider rental boxes, provided they support CardDAV.</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-info is-medium" th:href="@{/setup}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0052:85ecd6f2">To the block list</span>
+						</a>
+					</footer>
+				</div>
+			</div>
+		</div>
+
+	</div>
+</section>
+
+<div th:replace="~{fragments/page :: footer}"></div>
+</body>
+</html>

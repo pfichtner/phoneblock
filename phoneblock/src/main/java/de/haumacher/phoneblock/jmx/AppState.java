@@ -7,9 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.haumacher.phoneblock.ab.SipService;
-import de.haumacher.phoneblock.analysis.NumberAnalyzer;
-import de.haumacher.phoneblock.app.api.model.PhoneNumer;
-import de.haumacher.phoneblock.chatgpt.ChatGPTService;
 import de.haumacher.phoneblock.db.DB;
 import de.haumacher.phoneblock.index.IndexUpdateService;
 
@@ -22,16 +19,14 @@ public class AppState implements AppStateMBean {
 
 	private IndexUpdateService _updater;
 	private DB _db;
-	private ChatGPTService _gpt;
 	private SipService _sip;
 
-	/** 
+	/**
 	 * Creates a {@link AppState}.
 	 */
-	public AppState(IndexUpdateService updater, DB db, ChatGPTService gpt, SipService sip) {
+	public AppState(IndexUpdateService updater, DB db, SipService sip) {
 		_updater = updater;
 		_db = db;
-		_gpt = gpt;
 		_sip = sip;
 	}
 
@@ -51,23 +46,8 @@ public class AppState implements AppStateMBean {
 	}
 
 	@Override
-	public int getRatings() {
-		return _db.getRatings();
-	}
-
-	@Override
 	public int getSearches() {
 		return _db.getSearches();
-	}
-	
-	@Override
-	public int getActiveNumbers() {
-		return _db.getActiveReportCount();
-	}
-	
-	@Override
-	public int getArchivedNumbers() {
-		return _db.getArchivedReportCount();
 	}
 	
 	@Override
@@ -83,18 +63,6 @@ public class AppState implements AppStateMBean {
 	@Override
 	public void triggerServiceMails() {
 		_db.sendSupportMails();
-	}
-	
-	@Override
-	public void triggerSummaryCreation(String phoneNumbers) {
-		for (String phoneText : phoneNumbers.split(",")) {
-			PhoneNumer number = NumberAnalyzer.parsePhoneNumber(phoneText);
-			if (number == null) {
-				LOG.info("Invalid number received: " + phoneText);
-				continue;
-			}
-			_gpt.createSummary(number);
-		}
 	}
 	
 	@Override

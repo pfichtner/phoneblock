@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head(title=#{page.index.title})}"></head>
+<head th:replace="~{fragments/page :: head(titleKey='page.index.title', descriptionKey='page.index.description', titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
@@ -8,81 +8,228 @@
 <section class="section">
 	<div class="content">
 		<div class="logo-animation">
-			<img alt="PhoneBlock logotyp" data-tx="t0015" th:src="@{/assets/img/animation.svg}"/>
+			<img alt="PhoneBlock logotyp" data-tx="t0015:5b0e8765" th:src="@{/assets/img/animation.svg}"/>
 		</div>
 
-		<h1 data-tx="t0001">Avvisa automatiskt oönskade samtal</h1>
+		<h1 data-tx="t0001:79729e8b">Avvisa automatiskt oönskade samtal</h1>
 
-		<p data-tx="t0002">Har ditt telefonnummer också hamnat i händerna på tvivelaktiga adresshandlare och du får ständigt irriterande samtal som vill "optimera" din elräkning, ge dig råd om ett solsystem, tillkännage ett annat stort pris eller erbjuda andra "förmåner"? Då är <b>PhoneBlock</b> precis vad du behöver!</p>
+		<p data-tx="t0002:55e1cc1a">Har ditt telefonnummer också hamnat i händerna på oseriösa adresshandlare? Får du ständigt irriterande samtal som vill "optimera" din elräkning, ge dig råd om en solcellsanläggning eller utlysa ännu ett stort pris? Då är <b>PhoneBlock</b> precis vad du behöver!</p>
+
+		<div th:replace="~{fragments/page :: buttons}"></div>
+
+		<h2 data-tx="t0016:855ca724">Varför PhoneBlock?</h2>
+
+		<div class="columns is-multiline">
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-shield-alt fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0017:372c266b">Automatiskt skydd</h3>
+					<p data-tx="t0018:939eaea">Din router eller smartphone blockerar automatiskt spam-samtal - utan att du behöver göra någonting.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-users fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0019:e1e1d3fb">Gemenskapens makt</h3>
+					<p data-tx="t0020:c0dea87">Tusentals användare rapporterar nya spamnummer varje dag. Tillsammans kan vi skydda oss mot irriterande reklamsamtal.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-sync fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0021:403225f8">Alltid uppdaterad</h3>
+					<p data-tx="t0022:77377622">Blockeringslistan uppdateras automatiskt. Nya skräppostnummer blockeras omedelbart.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-lock fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0023:5f4450bc">Skydd av personuppgifter</h3>
+					<p data-tx="t0024:6b49a98"><a th:href="@{/link/github}">Öppen källkod</a> och självhostad. Dina telefonnummer är hashade - ingen kan se vem som ringer dig.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-gift fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0025:5f4715c">Kostnadsfritt</h3>
+					<p data-tx="t0026:a55c86e4">PhoneBlock är helt gratis och reklamfritt. Av samhället, för samhället (du kan <a th:href="@{/support}">donera</a> för driften).</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-cogs fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0027:754345bd">Flexibel</h3>
+					<p data-tx="t0053:91c8788c">Fungerar i <a th:href="@{/festnetz}">landline</a>, på <a th:href="@{/setup-android}">Android</a>, <a th:href="@{/setup-iphone}">iPhone</a> och <a th:href="@{/setup-switchboard}">telefonsystem</a> - du bestämmer hur.</p>
+				</div>
+			</div>
+		</div>
+
+		<h2 data-tx="t0029:f316c4f9">Så enkelt är det</h2>
 
 		<div class="columns">
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${fritzbox ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/anrufbeantworter}">
-			    <span class="icon">
-					<img th:src="@{/assets/img/ab/logo/ab-logo-white.svg}"/>
-			    </span>
-				<span data-tx="t0003">Telefonsvarare</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium is-info is-fullwidth|" th:href="@{/setup}">
-			    <span class="icon">
-					<i class="fa-solid fa-phone"></i>
-			    </span>
-				<span data-tx="t0004">Fritz!Box telefonbok</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${android ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-android}">
-			    <span class="icon">
-					<i class="fa-solid fa-mobile-screen"></i>
-			    </span>
-				<span data-tx="t0005">För Android</span>
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${iphone ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-iphone}">
-			    <span class="icon">
-					<i class="fa-brands fa-apple"></i>
-			    </span>
-				<span data-tx="t0006">För iPhone</span>
-			</a>
-		  </div>
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-download fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0030:365b45bb">1. Installation</h3>
+					<p data-tx="t0031:ca7700fd">Välj din plattform och följ installationsanvisningarna. Det tar bara några minuter.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-check-circle fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0032:3226e470">2. sätta upp</h3>
+					<p data-tx="t0033:d28ccabb">PhoneBlock laddar den aktuella svarta listan och ställer in den automatiska uppdateringen.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-phone-slash fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0034:39c4cb5e">3. Skyddad!</h3>
+					<p data-tx="t0035:460bd8e6">Från och med nu kommer spam-samtal att blockeras automatiskt. Din telefon kommer äntligen att vara tyst.</p>
+				</div>
+			</div>
 		</div>
 
-		<h2 data-tx="t0007">Hur fungerar PhoneBlock?</h2>
+		<h2 data-tx="t0036:7f1ed01c">Välj din plattform</h2>
 
-		<p data-tx="t0008">PhoneBlock är en lista som upprätthålls av PhoneBlock-gruppen med telefonnummer som misstänks vara skräppost. <a th:href="@{/anrufbeantworter}">PhoneBlocks telefonsvarare</a> tar sedan emot samtal från personer som finns på blockeringslistan så att din telefon förblir tyst för dessa samtal.</p>
-		
-		<p data-tx="t0009">Alternativt kan du också importera den svarta listan som en telefonbok till din "FRITZ!Box"-internetrouter och blockera samtal från nummer i denna <a th:href="@{/setup}">specialiserade telefonbok</a>. Du behöver inte längre blockera nummerserier manuellt, eftersom din Fritz!Box automatiskt uppdaterar den blockerade listan varje kväll. Så snart ett nummer läggs till i den svarta listan avvisar din FRITZ!Box automatiskt samtal från detta nummer. <a th:href="@{/anrufbeantworter}">Svarsmaskinen</a> är dock en bättre lösning eftersom en telefonbok har begränsad storlek och inte kan innehålla alla nummer i blockeringslistan.</p>
+		<div class="columns is-multiline">
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-phone"></i></span>
+								<span data-tx="t0054:374baf20">Fast telefoni</span>
+							</span>
+						</p>
+						<p data-tx="t0055:fa373b77">Tre varianter att välja mellan: <a th:href="@{/dongle}">PhoneBlock-dongle</a> som ett litet USB-minne i routern, <a th:href="@{/anrufbeantworter}">Cloud-svarare</a> via Fritz!Box eller <a th:href="@{/setup}">Blocklist-telefonbok</a> som CardDAV-synkronisering. Vilken som passar dig bäst beror på din router, leverantör och krav på dataskydd.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${fritzbox ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/festnetz}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0056:f69b313">Välj variant för fast nät</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<p data-tx="t0010">Om du fortfarande får ett oönskat samtal eftersom numret ännu inte har lagts till i den blockerade listan kan du enkelt blockera <a th:href="@{/block}">numret i din FRITZ!Box</a>. För att göra detta, gör en post för den oönskade uppringaren i PhoneBlock-adressboken direkt i din Fritz!Box Så snart du har gjort detta kommer din FrizBox att uppdatera blockeringslistan för alla medlemmar i PhoneBlock-communityn och samtal från det nya numret kommer omedelbart att blockeras för alla andra. Detta är lite mer tidskrävande än att blockera numret direkt i din Fritz!BoxPhone, men har fördelen att du skyddar hela PhoneBlock-communityn från <a th:href="@{/status}">ytterligare spam-samtal</a>.</p>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-android"></i></span>
+								<span data-tx="t0057:aecec7cb">Android</span>
+							</span>
+						</p>
+						<p data-tx="t0058:cee8e47c">Blockera spam-samtal direkt på din Android-mobiltelefon med <a th:href="@{/setup-android}">PhoneBlock-appen</a>. Appen kontrollerar inkommande samtal i realtid och blockerar automatiskt kända spamnummer. Du kan själv ställa in hur många negativa meddelanden ett nummer ska blockeras för.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${android ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-android}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0059:b0eb119f">Konfigurera Android</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<h2 data-tx="t0011">Vilka är kraven?</h2>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-apple"></i></span>
+								<span data-tx="t0060:b21bebc5">iPhone</span>
+							</span>
+						</p>
+						<p data-tx="t0061:b45f7cac">Inkludera PhoneBlock-blockeringslistan i dina iPhone-kontakter. iOS visar dig sedan automatiskt när en uppringare finns på blockeringslistan. <a th:href="@{/setup-iphone}">Inställningen</a> görs via CardDAV - din iPhone håller automatiskt listan uppdaterad.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${iphone ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-iphone}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0062:c278f9d5">Konfigurera iPhone</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<div class="fritzbox-position">
-			<a th:href="@{/link/fritzbox}"> <img alt="AVM Fritz!Box 7590" data-tx="t0016" id="fritzbox" th:src="@{/assets/img/fritzbox.png}" width="200"/>
-			</a>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-asterisk"></i></span>
+								<span data-tx="t0063:9faa419a">Telefonsystem</span>
+							</span>
+						</p>
+						<p data-tx="t0064:99335f28">Integrera PhoneBlock i ditt <a th:href="@{/setup-switchboard}">telefonsystem</a> eller PBX. Blocklistan kan laddas ner i olika format eller hämtas via API. Idealisk för företag och professionella telefonsystem.</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-info is-medium" th:href="@{/setup-switchboard}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0065:aa28e976">Sätta upp telefonsystem</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 		</div>
-		
-		<p data-tx="t0012">PhoneBlock kan blockera oönskade samtal antingen på <a th:href="@{/setup}">"fast telefon"</a> i kombination med en <a th:href="@{/link/fritzbox}">"FRITZ!Box" Internet-router från AVM</a>, eller visa direkt på din <a th:href="@{/setup-android}">mobila telefon</a> om en uppringare är potentiellt oönskad.</p>
-		
+
+		<h2 data-tx="t0047:5f8f8581">Samhället gör skillnad</h2>
+
 		<div class="columns">
-		  <div class="column is-half is-offset-one-quarter">
-			  <input id="context-path" th:value="${contextPath}" type="hidden"/>
-			<a class="button is-medium is-info is-fullwidth state-initial" href="#" id="search-fritzbox">
-				<span class="icon is-small is-left">
-					<i class="fa-solid fa-magnifying-glass"></i>
-				</span>
-				<span class="display-initial" data-tx="t0013">Sök Fritz!Box</span>
-				<span class="display-searching" data-tx="t0017">Vänta lite nu...</span>
-				<span class="display-success" data-tx="t0018">Hittade den, sätt igång!</span>
-				<span class="display-failed" data-tx="t0019">Hittas inte, vad ska jag göra?</span>
-			</a>
-		  </div>
+			<div class="column">
+				<div class="notification is-info is-light">
+					<p class="is-size-4 has-text-centered">
+						<span class="icon">
+							<i class="fas fa-database"></i>
+						</span>
+						<strong data-tx="t0048:1c6af23e">Starka tillsammans:</strong>
+					</p>
+					<p class="has-text-centered mt-3" data-tx="t0049:60846880">Vem som helst kan vara med! Rapportera spamnummer direkt i appen, på webbplatsen eller genom att <a th:href="@{/blacklist}">lägga till dem i din personliga svarta lista</a>. Så snart ett nummer rapporteras läggs det till i den svarta listan för alla användare. Ju fler användare som deltar, desto bättre kan vi alla skydda oss mot spam-samtal.</p>
+					<p class="has-text-centered mt-3">
+						<a class="button is-info" th:href="@{/status}">
+							<span class="icon">
+								<i class="fas fa-chart-bar"></i>
+							</span>
+							<span data-tx="t0050:eb8d6186">Visa aktuell statistik</span>
+						</a>
+					</p>
+				</div>
+			</div>
 		</div>
 
-		<p data-tx="t0014">Är du osäker på om du har en Fritz!Box-box? Om du för närvarande är hemma i WLan kan du trycka på sökknappen ovan. PhoneBlock kommer då att försöka hitta en Fritz!Box-box i ditt område.</p>
+		<div class="has-text-centered mt-5">
+			<h2 class="title is-3" data-tx="t0051:fc3cb6b6">Är du redo att blockera spam-samtal?</h2>
+			<p class="subtitle" data-tx="t0052:3fb05228">Välj din plattform och kom igång på bara några minuter:</p>
+
+			<div th:replace="~{fragments/page :: buttons}"></div>
+		</div>
+
 	</div>
 </section>
 

@@ -38,6 +38,9 @@ public abstract class BotRequest extends SetupRequest {
 		/** Visit case for {@link de.haumacher.phoneblock.ab.proto.ClearCallList}.*/
 		R visit(de.haumacher.phoneblock.ab.proto.ClearCallList self, A arg) throws E;
 
+		/** Visit case for {@link de.haumacher.phoneblock.ab.proto.SetRetentionPolicy}.*/
+		R visit(de.haumacher.phoneblock.ab.proto.SetRetentionPolicy self, A arg) throws E;
+
 	}
 
 	/** @see #getId() */
@@ -72,13 +75,29 @@ public abstract class BotRequest extends SetupRequest {
 		_id = value;
 	}
 
-	private static java.util.List<String> PROPERTIES = java.util.Collections.unmodifiableList(
-		java.util.Arrays.asList(
-			ID__PROP));
+	static final java.util.List<String> PROPERTIES;
+	static {
+		java.util.List<String> local = java.util.Arrays.asList(
+			ID__PROP);
+		PROPERTIES = java.util.Collections.unmodifiableList(local);
+	}
+
+	static final java.util.Set<String> TRANSIENT_PROPERTIES;
+	static {
+		java.util.HashSet<String> tmp = new java.util.HashSet<>();
+		tmp.addAll(java.util.Arrays.asList(
+				));
+		TRANSIENT_PROPERTIES = java.util.Collections.unmodifiableSet(tmp);
+	}
 
 	@Override
 	public java.util.List<String> properties() {
 		return PROPERTIES;
+	}
+
+	@Override
+	public java.util.Set<String> transientProperties() {
+		return TRANSIENT_PROPERTIES;
 	}
 
 	@Override
@@ -113,6 +132,7 @@ public abstract class BotRequest extends SetupRequest {
 			case CheckAnswerBot.CHECK_ANSWER_BOT__TYPE: result = de.haumacher.phoneblock.ab.proto.CheckAnswerBot.readCheckAnswerBot(in); break;
 			case ListCalls.LIST_CALLS__TYPE: result = de.haumacher.phoneblock.ab.proto.ListCalls.readListCalls(in); break;
 			case ClearCallList.CLEAR_CALL_LIST__TYPE: result = de.haumacher.phoneblock.ab.proto.ClearCallList.readClearCallList(in); break;
+			case SetRetentionPolicy.SET_RETENTION_POLICY__TYPE: result = de.haumacher.phoneblock.ab.proto.SetRetentionPolicy.readSetRetentionPolicy(in); break;
 			default: in.skipValue(); result = null; break;
 		}
 		in.endArray();

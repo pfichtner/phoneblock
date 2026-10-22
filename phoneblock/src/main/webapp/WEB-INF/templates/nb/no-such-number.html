@@ -1,15 +1,35 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head}"></head>
+<head th:replace="~{fragments/page :: head(titleKey=null, descriptionKey=null, titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
 
 <section class="section">
 <div class="content">
-	<h1 data-tx="t0001">Telefonnummeret ☎ <span th:text="${number}"></span> finnes ikke</h1>
+	<h1 data-tx="t0001:657a0bf2">Telefonnummeret ☎ <span th:text="${number}"></span> finnes ikke</h1>
 
-	<p data-tx="t0002">Nummeret du leter etter er ikke et telefonnummer. Korriger søket ditt og prøv igjen!</p>
+	<p data-tx="t0002:d5692a3b">Nummeret du leter etter er ikke et telefonnummer. Korriger søket ditt og prøv igjen!</p>
+
+	<h2 data-tx="t0003:379d2439">Støttede søkeformater</h2>
+
+	<p data-tx="t0004:c262e767">Du kan legge inn telefonnumre i ulike formater:</p>
+
+	<ul>
+		<li><strong data-tx="t0005:6c2339bd">Internasjonal stavemåte med +:</strong> <code>+49 30 12345678</code></li>
+		<li>
+			<strong data-tx="t0010:11db8a31">Internasjonal notasjon med <span th:text="${internationalPrefix}">00</span>:</strong>
+			<code><span th:text="${internationalPrefix}">00</span>49 30 12345678</code>
+		</li>
+		<li data-tx="t0011:ddfb97e5"><strong>Nasjonal stavemåte:</strong> <code><span th:text="${trunkPrefix}">0</span>30 12345678</code> (basert på ditt nåværende retningsnummer)</li>
+	</ul>
+
+	<div class="notification is-info">
+		<p>
+			<strong data-tx="t0008:3be3cc00">Ditt nåværende retningsnummer:</strong> <span th:text="${currentDialPrefix}">+49</span>
+		</p>
+		<p data-tx="t0009:369b0717">💡 Hvis du er <a th:href="@{/login}">logget inn</a>, kan du konfigurere retningsnummeret ditt permanent i <a th:href="@{/settings}">innstillinger</a>. Dette sikrer at nasjonale telefonnumre tolkes riktig.</p>
+	</div>
 </div>
 </section>
 

@@ -14,7 +14,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -35,9 +34,12 @@ import org.thymeleaf.web.servlet.JakartaServletWebApplication;
 
 import de.haumacher.phoneblock.app.AssignContributionServlet;
 import de.haumacher.phoneblock.app.BasicLoginFilter;
+import de.haumacher.phoneblock.app.EpcQrCodeServlet;
+import de.haumacher.phoneblock.util.I18N;
 import de.haumacher.phoneblock.app.CreateAuthTokenServlet;
 import de.haumacher.phoneblock.app.DeleteAccountServlet;
 import de.haumacher.phoneblock.app.EMailVerificationServlet;
+import de.haumacher.phoneblock.app.EmailChangeServlet;
 import de.haumacher.phoneblock.app.ErrorServlet;
 import de.haumacher.phoneblock.app.ExternalLinkServlet;
 import de.haumacher.phoneblock.app.LoginFilter;
@@ -48,6 +50,8 @@ import de.haumacher.phoneblock.app.ResetPasswordServlet;
 import de.haumacher.phoneblock.app.SearchServlet;
 import de.haumacher.phoneblock.app.SettingsServlet;
 import de.haumacher.phoneblock.app.oauth.OAuthLoginServlet;
+import de.haumacher.phoneblock.app.render.controller.StatsController;
+import de.haumacher.phoneblock.app.render.controller.StatusController;
 import de.haumacher.phoneblock.carddav.CardDavServlet;
 import de.haumacher.phoneblock.db.settings.AuthToken;
 import de.haumacher.phoneblock.random.SecureRandomService;
@@ -84,26 +88,34 @@ public class ContentFilter extends LoginFilter {
 	private TemplateRenderer _renderer;
 	
 	private static final Map<String, String> LEGACY_PAGES;
-	
-	private static final Set<String> NO_POW;
-	
+
+	/**
+	 * Pages that may be the target of problematic bulk queries and are therefore
+	 * protected by a proof-of-work challenge for non-authenticated requests that do
+	 * not originate from a well-known bot.
+	 *
+	 * <p>
+	 * In addition to the pages listed here, all number information pages below
+	 * {@link SearchServlet#NUMS_PREFIX} require a proof of work. All other
+	 * (essentially static) pages are delivered directly, so that link previews keep
+	 * working for crawlers that are not on the bot whitelist.
+	 * </p>
+	 */
+	private static final Set<String> POW_PAGES;
+
 	static {
 		LEGACY_PAGES = new HashMap<>();
 		LEGACY_PAGES.put("/signup.jsp", "/login.jsp");
-		
-		NO_POW = new HashSet<>();
-		NO_POW.add("/");
-		NO_POW.add("/support");
-		NO_POW.add("/login");
-		NO_POW.add("/login-web");
-		NO_POW.add(LoginServlet.PATH);
-		NO_POW.add(RegistrationServlet.REGISTER_WEB);
-		NO_POW.add(RegistrationServlet.REGISTER_MOBILE);
-		NO_POW.add(RatingServlet.PATH);
-		NO_POW.add(CreateAuthTokenServlet.CREATE_TOKEN);
-		NO_POW.add(ErrorServlet.NOT_ALLOWED_PATH);
-		NO_POW.add(ErrorServlet.NOT_AUTHENTICATED_PATH);
-		NO_POW.add(ErrorServlet.NOT_FOUND_PATH);
+		LEGACY_PAGES.put("/block", "/blacklist");
+		LEGACY_PAGES.put("/setup-android/03-people-sync-install", "/setup-android");
+		LEGACY_PAGES.put("/setup-android/05-people-sync-accept", "/setup-android");
+		LEGACY_PAGES.put("/setup-android/07-people-sync-add", "/setup-android");
+		LEGACY_PAGES.put("/setup-android/09-people-sync-account-finished", "/setup-android");
+		LEGACY_PAGES.put("/setup-android/11-spam-contacts", "/setup-android");
+
+		POW_PAGES = new HashSet<>();
+		POW_PAGES.add(StatusController.STATUS_PAGE);
+		POW_PAGES.add(StatsController.STATS_PAGE);
 	}
 
 	public void init(final FilterConfig filterConfig) throws ServletException {
@@ -131,25 +143,34 @@ public class ContentFilter extends LoginFilter {
 
 	@Override
 	protected boolean checkTokenAuthorization(HttpServletRequest request, AuthToken authorization) {
-		return authorization.isAccessLogin();
+		String path = request.getServletPath();
+		if (path.startsWith(SearchServlet.NUMS_PREFIX)) {
+			return authorization.isAccessQuery();
+		}
+		
+		switch (path) {
+		case "/settings":
+		case "/blacklist":
+		case "/whitelist":
+			return authorization.isAccessLogin();
+		default:
+			return authorization.isAccessRate();
+		}
 	}
 
 	@Override
 	protected void requestLogin(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 			throws IOException, ServletException {
-		if (!SearchServlet.isGoodBot(request)) {
-			String uri = request.getRequestURI().substring(request.getContextPath().length());
-			if (NO_POW.contains(uri) 
-					|| !request.getMethod().equals("GET")
-					|| uri.startsWith("/assets") 
-					|| uri.startsWith("/webjars")
-					|| uri.startsWith("/oauth")
-					|| uri.startsWith("/api")
-					|| uri.startsWith(CardDavServlet.DIR_NAME)) {
-				render(request, response, chain);
-				return;
-			};
-			
+		String uri = request.getRequestURI().substring(request.getContextPath().length());
+
+		// Only the number information pages and a few selected pages may be the
+		// target of problematic bulk queries. All other (essentially static) pages
+		// are delivered directly, so that link previews keep working for crawlers
+		// that are not on the bot whitelist.
+		boolean powRequired = request.getMethod().equals("GET")
+				&& (uri.startsWith(SearchServlet.NUMS_PREFIX) || POW_PAGES.contains(uri));
+
+		if (powRequired && !SearchServlet.isGoodBot(request)) {
 			// Not a well-known bot and no authenticated user. This might be a problematic bulk query, request a proof of work.
 			HttpSession session = request.getSession();
 			Integer counter = (Integer) session.getAttribute(POW_COUNTER_ATTR);
@@ -198,6 +219,13 @@ public class ContentFilter extends LoginFilter {
 			
 			// Create or check prove-of-work challenge.
 			String challengeParam = (String) request.getParameter(POW_CHALLENGE_ATTR);
+			if (challenge == null && challengeParam != null) {
+				// The browser does not accept the session cookie. Deliver a manual retry page.
+				// Otherwise this creates an endless redirect loop and the client is immediately
+				// added to the firewall blocklist.
+				TemplateRenderer.getInstance(request).process("/pow-failed", request, response);
+				return;
+			}
 			if (challenge == null || !challenge.equals(challengeParam)) {
 				challenge = createChallenge();
 				session.setAttribute(POW_CHALLENGE_ATTR, challenge);
@@ -258,7 +286,7 @@ public class ContentFilter extends LoginFilter {
 	}
 
 	@Override
-	protected void loggedIn(HttpServletRequest request, HttpServletResponse response, String userName, FilterChain chain)
+	protected void loggedIn(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
 			throws IOException, ServletException {
 		render(request, response, chain);
 	}
@@ -282,6 +310,7 @@ public class ContentFilter extends LoginFilter {
 			(path.startsWith("/api/") && !path.equals("/api/")) ||
 			path.startsWith(CardDavServlet.DIR_NAME) ||
 			path.startsWith(AssignContributionServlet.PATH) ||
+			path.startsWith(EpcQrCodeServlet.PATH) ||
 			path.startsWith(CreateAuthTokenServlet.CREATE_TOKEN) ||
 			path.startsWith(DeleteAccountServlet.PATH) ||
 			path.startsWith(EMailVerificationServlet.LOGIN_WEB) ||
@@ -300,7 +329,8 @@ public class ContentFilter extends LoginFilter {
 			path.equals(ErrorServlet.NOT_AUTHENTICATED_PATH) ||
 			path.equals("/sitemap.jsp") ||
 			path.endsWith(".js") || 
-			path.endsWith(".json") 
+			path.endsWith(".json") ||
+			path.startsWith(EmailChangeServlet.PATH)
 		) {
 			chain.doFilter(request, response);
 			return;
@@ -436,15 +466,7 @@ public class ContentFilter extends LoginFilter {
 			@Override
 			public String resolveMessage(ITemplateContext context, Class<?> origin, String key, Object[] messageParameters) {
 				Locale locale = context.getLocale();
-
-				ResourceBundle bundle = ResourceBundle.getBundle("Messages", locale);
-				String message = bundle.getString(key);
-				
-				if (messageParameters != null && messageParameters.length > 0) {
-					return new MessageFormat(message).format(messageParameters);
-				} else {
-					return message;
-				}
+				return I18N.getMessage(locale, key, messageParameters);
 			}
 			
 			@Override

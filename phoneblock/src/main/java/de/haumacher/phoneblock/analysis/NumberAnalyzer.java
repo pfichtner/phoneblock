@@ -25,6 +25,7 @@ import com.opencsv.ICSVParser;
 import com.opencsv.exceptions.CsvValidationException;
 
 import de.haumacher.phoneblock.analysis.model.NationalDestinationCode;
+import de.haumacher.phoneblock.app.api.model.PhoneInfo;
 import de.haumacher.phoneblock.app.api.model.PhoneNumer;
 import de.haumacher.phoneblock.location.Countries;
 import de.haumacher.phoneblock.location.model.Country;
@@ -57,8 +58,8 @@ public class NumberAnalyzer {
 		return number == null ? null : getPhoneId(number);
 	}
 
-	public static PhoneNumer parsePhoneNumber(String phoneText) {
-		return parsePhoneNumber(phoneText, GERMAN_DIAL_PREFIX);
+	public static PhoneNumer parsePhoneId(String phoneId) {
+		return parsePhoneNumber(phoneId, GERMAN_DIAL_PREFIX);
 	}
 	
 	public static PhoneNumer parsePhoneNumber(String phoneText, String dialPrefix) {
@@ -81,34 +82,134 @@ public class NumberAnalyzer {
 	 * Removes grouping characters from the given phone number.
 	 */
 	public static String normalizeNumber(String phoneNumber) {
-		return NORMALIZE_PATTERN.matcher(phoneNumber).replaceAll("");
+		return NORMALIZE_PATTERN.matcher(phoneNumber.strip()).replaceAll("");
 	}
 
-	public static PhoneNumer analyze(String phone) {
+	/**
+	 * Converts a phone ID (phone format used in the database) to a phone number in international format.
+	 */
+	public static String toInternationalFormat(String phoneId) {
+		// Numbers are stored in German national format, internationalize them.
+		if (phoneId.startsWith("00")) {
+			phoneId = "+" + phoneId.substring(2);
+		} else {
+			// The number is a national German number (that must start with a single zero).
+			phoneId = GERMAN_DIAL_PREFIX + phoneId.substring(1);
+		}
+		return phoneId;
+	}
+
+	/**
+	 * Shortest phone-ID prefix accepted as a wildcard block (#377).
+	 *
+	 * <p>
+	 * Breadth is self-limiting through the report weight, so we only guard against a
+	 * prefix so short it blocks almost everything on the user's own devices. At length 3
+	 * a user can block a non-German country code ({@code +1} &rarr; {@code 001}) or a German
+	 * city ({@code +49 30} &rarr; {@code 030}), while a bare {@code 0} (all national) or
+	 * {@code 00} (all international) is still rejected.
+	 * </p>
+	 *
+	 * <p>
+	 * <b>Known limitation (#377):</b> wildcards are stored and matched in this German-centric
+	 * phone-ID form. German numbers shed their country code ({@code +49 30} &rarr; {@code 030}),
+	 * everyone else keeps {@code 00<cc>} ({@code +1} &rarr; {@code 001}). A clean prefix exists
+	 * for foreign country codes, but <em>not</em> for "all of Germany": {@code +49} &rarr;
+	 * {@code 0} matches every phone-ID (German {@code 0…} and international {@code 00…} alike).
+	 * Blocking a whole country symmetrically requires storing/matching wildcards in international
+	 * ({@code +CC}) form; until then this floor caps the damage at city level for Germany.
+	 * </p>
+	 */
+	public static final int MIN_WILDCARD_PREFIX_LENGTH = 3;
+
+	/**
+	 * Converts a phone number prefix (international {@code +}, {@code 00}-international or
+	 * national form) to the database phone-ID prefix used as a wildcard-block key (#377).
+	 *
+	 * <p>
+	 * Unlike {@link #toId}, this does not run country analysis, so it also works for a
+	 * partial number (a prefix). It is the inverse of {@link #toInternationalFormat}.
+	 * </p>
+	 *
+	 * @return the digits-only phone-ID prefix, or {@code null} if the input is not a
+	 *         usable prefix (empty, contains a wildcard char, or shorter than
+	 *         {@link #MIN_WILDCARD_PREFIX_LENGTH}).
+	 */
+	public static String toWildcardId(String prefixText, String dialPrefix) {
+		String normalized = normalizeNumber(prefixText);
+		if (normalized.isEmpty() || normalized.contains("*")) {
+			return null;
+		}
+
+		String international;
+		if (normalized.startsWith("+")) {
+			international = normalized;
+		} else if (normalized.startsWith("00")) {
+			international = "+" + normalized.substring(2);
+		} else if (normalized.startsWith("0")) {
+			// National number in the user's country.
+			international = dialPrefix + normalized.substring(1);
+		} else {
+			return null;
+		}
+
+		String phoneId;
+		if (international.startsWith(GERMAN_DIAL_PREFIX)) {
+			phoneId = "0" + international.substring(GERMAN_DIAL_PREFIX.length());
+		} else {
+			phoneId = "00" + international.substring(1);
+		}
+
+		return phoneId.length() < MIN_WILDCARD_PREFIX_LENGTH ? null : phoneId;
+	}
+
+	public static PhoneNumer analyzePhoneID(String phone) {
 		return analyze(phone, GERMAN_DIAL_PREFIX);
 	}
 	
+	public static PhoneInfo phoneInfoFromId(String phoneId) {
+		PhoneNumer number = analyzePhoneID(phoneId);
+		if (number == null) {
+			// Safety: Prevent NPE, if phoneId is invalid.
+			return PhoneInfo.create().setPhone(phoneId);
+		}
+		return phoneInfoFromNumber(number);
+	}
+
+	public static PhoneInfo phoneInfoFromNumber(PhoneNumer number) {
+		PhoneInfo result = PhoneInfo.create()
+			.setPhone(number.getPlus())
+			.setLabel(number.getShortcut());
+		if (number.hasCity()) {
+			result.setLocation(number.getCity());
+		}
+		return result;
+	}
+
 	/**
 	 * Analyzes the given (normalized) phone number.
 	 * @param dialPrefix The users local dial prefix.
 	 */
 	public static PhoneNumer analyze(String phone, String dialPrefix) {
-		PhoneNumer result = PhoneNumer.create();
-		
-		String plus = PhoneHash.toInternationalForm(phone, dialPrefix);
+		// Look up country by dial prefix to get trunk prefix information for parsing
+		// This is used by PhoneHash.toInternationalForm() to convert national format to international
+		List<String> userTrunkPrefixes = null;
+		List<Country> countriesForDialPrefix = Countries.BY_DIAL_PREFIX.get(dialPrefix);
+		if (countriesForDialPrefix != null && !countriesForDialPrefix.isEmpty()) {
+			// Use the first country's trunk prefixes
+			// (Multiple countries can share the same dial prefix, e.g., USA/Canada with +1)
+			userTrunkPrefixes = countriesForDialPrefix.get(0).getTrunkPrefixes();
+		}
+
+		String plus = PhoneHash.toInternationalForm(phone, dialPrefix, userTrunkPrefixes);
 		if (plus == null) {
 			// Not a valid number.
 			return null;
 		}
-		result.setPlus(plus);
-		String zeroZero = "00" + plus.substring(1);
-		result.setZeroZero(zeroZero);
 		
 		PrefixInfo info = findInfo(plus);
-		
 		String countryCode = info.getCountryCode();
-		if (countryCode == null || plus.charAt(countryCode.length()) == '0') {
-			// A city code cannot start with a zero.
+		if (countryCode == null) {
 			return null;
 		}
 
@@ -132,6 +233,45 @@ public class NumberAnalyzer {
 				return null;
 			}
 		}
+
+		// Validate that the local part doesn't start with any trunk prefix
+		// IMPORTANT: Use trunk prefixes from the NUMBER'S country, not the user's country
+		// For example: German user searching for Italian number +390123456789 should use Italian trunk prefixes
+		// The international form should never contain trunk prefixes - they should have been removed during normalization
+		// For example: Germany uses "0" as trunk prefix, so +49 0... is invalid (should be +49 ...)
+		// But for Italy (trunk prefix is empty), +39 0... is valid because 0 is part of the area code
+		List<String> numberTrunkPrefixes = null;
+		List<Country> countriesForNumber = Countries.BY_DIAL_PREFIX.get(countryCode);
+		if (countriesForNumber != null && !countriesForNumber.isEmpty()) {
+			numberTrunkPrefixes = countriesForNumber.get(0).getTrunkPrefixes();
+		}
+
+		if (numberTrunkPrefixes != null && !numberTrunkPrefixes.isEmpty()) {
+			String localPart = plus.substring(countryCode.length());
+			for (String trunkPrefix : numberTrunkPrefixes) {
+				if (!trunkPrefix.isEmpty() && localPart.startsWith(trunkPrefix)) {
+					// The local part must not start with a trunk prefix
+					return null;
+				}
+			}
+		}
+		
+		PhoneNumer result = PhoneNumer.create();
+		result.setPlus(plus);
+		String zeroZero = "00" + plus.substring(1);
+		result.setZeroZero(zeroZero);
+
+		// Compute dial format using the user's country-specific international prefix
+		// Get user's international prefix from their country
+		List<String> userInternationalPrefixes = null;
+		if (countriesForDialPrefix != null && !countriesForDialPrefix.isEmpty()) {
+			userInternationalPrefixes = countriesForDialPrefix.get(0).getInternationalPrefixes();
+		}
+		String internationalPrefix = (userInternationalPrefixes != null && !userInternationalPrefixes.isEmpty())
+			? userInternationalPrefixes.get(0)
+			: "00";  // fallback to "00" if no data available
+		String dial = internationalPrefix + plus.substring(1);
+		result.setDial(dial);
 		
 		result.setCountryCode(countryCode);
 		List<Country> countries = info.getCountries();
@@ -146,7 +286,21 @@ public class NumberAnalyzer {
 			result.setId(zeroZero);
 		} else {
 			result.setCountry(countries.stream().map(c -> c.getOfficialNameEn()).collect(Collectors.joining(", ")));
-			String national = "0" + plus.substring(countryCode.length());
+
+			// Build national format by prepending the trunk prefix
+			// Use trunk prefixes from the NUMBER'S country (not the user's country)
+			// For most countries (e.g., Germany), trunk prefix is "0"
+			// For Italy, trunk prefix is empty, so the local part already contains any leading zeros
+			String localPart = plus.substring(countryCode.length());
+			String national;
+			if (numberTrunkPrefixes != null && !numberTrunkPrefixes.isEmpty() && !numberTrunkPrefixes.get(0).isEmpty()) {
+				// Country has a non-empty trunk prefix, prepend it
+				national = numberTrunkPrefixes.get(0) + localPart;
+			} else {
+				// Country has no trunk prefix (or empty trunk prefix), use local part as-is
+				national = localPart;
+			}
+
 			result.setShortcut("(" + countries.stream().map(c -> c.getISO31661Alpha2()).collect(Collectors.joining(", ")) + ") " + national);
 			if (GERMAN_DIAL_PREFIX.equals(countryCode)) {
 				result.setId(national);
@@ -182,14 +336,14 @@ public class NumberAnalyzer {
 			}
 		}
 		
-		loadNumberingPlan(root, GERMAN_DIAL_PREFIX, "numbering-plan-49-germany.csv");
-		loadNumberingPlan(root, "+43", "numbering-plan-43-austria.csv");
-		loadNumberingPlan(root, "+39", "numbering-plan-39-italy.csv");
+		loadNumberingPlan(root, GERMAN_DIAL_PREFIX, "numbering-plan-49-germany.csv", "", "0");
+		loadNumberingPlan(root, "+43", "numbering-plan-43-austria.csv", "", "0");
+		loadNumberingPlan(root, "+39", "numbering-plan-39-italy.csv", "0", "");
 		
 		return root;
 	}
 
-	private static void loadNumberingPlan(Node root, String dialPrefix, String resource) {
+	private static void loadNumberingPlan(Node root, String dialPrefix, String resource, String cityCodePrefix, String cityCodeDisplayPrefix) {
 		// See https://www.itu.int/oth/T0202.aspx?lang=en&parent=T0202
 		// See https://www.bundesnetzagentur.de/SharedDocs/Downloads/DE/Sachgebiete/Telekommunikation/Unternehmen_Institutionen/Nummerierung/Rufnummern/ONRufnr/Vorwahlverzeichnis_ONB.zip.html
 		try (InputStream in = NumberAnalyzer.class.getResourceAsStream(resource)) {
@@ -206,7 +360,7 @@ public class NumberAnalyzer {
 		        			break;
 		        		}
 		        		
-		        		String prefix = line[0].replaceAll("[^0-9]", "");
+		        		String prefix = cityCodePrefix + line[0].replaceAll("[^0-9]", "");
 		        		int maxDigits = line[1].isBlank() ? -1 : Integer.parseInt(line[1]);
 		        		int minDigits = line[2].isBlank() ? -1 : Integer.parseInt(line[2]);
 		        		String usage = line[3];
@@ -226,7 +380,7 @@ public class NumberAnalyzer {
 		        			node._info.setUsage(join(node._info.getUsage(), usage));
 		        			node._info.setInfo(join(node._info.getInfo(), info));
 		        		} else {
-		        			node._cityCode = "0" + prefix;
+		        			node._cityCode = cityCodeDisplayPrefix + prefix;
 		        			
 		        			node._contryCode = countryNode.getCountryCode();
 		        			node._countries = countryNode.getCountries();
@@ -391,5 +545,18 @@ public class NumberAnalyzer {
 	public static byte[] getPhoneHash(MessageDigest digest, PhoneNumer number) {
 		return PhoneHash.getPhoneHash(digest, number.getPlus());
 	}
-	
+
+	public static PhoneNumer extractNumber(String query, String dialPrefix) {
+		String rawPhoneNumber = normalizeNumber(query);
+		if (rawPhoneNumber.isEmpty() || rawPhoneNumber.contains("*")) {
+			return null;
+		}
+		
+		PhoneNumer number = analyze(rawPhoneNumber, dialPrefix);
+		if (number == null) {
+			return null;
+		}
+		return number;
+	}
+
 }

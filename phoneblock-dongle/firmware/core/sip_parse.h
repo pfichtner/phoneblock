@@ -1,0 +1,165 @@
+#pragma once
+
+// Pure-C SIP string helpers, split out of sip_register.c so they can be
+// unit-tested on the host (see firmware/test/). No ESP-IDF, no lwip, no
+// mbedtls — only <string.h> / <strings.h>.
+//
+// All char-writing helpers take an explicit capacity and NUL-terminate
+// within that capacity. Inputs that are too long are silently truncated;
+// the test suite pins down that behavior.
+
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+
+// Locate the first occurrence of "Name:" in the message after the start
+// line and return a pointer to the first non-whitespace character of the
+// value. NULL if the header is absent. Lookup is case-insensitive.
+const char *find_header(const char *msg, int msg_len, const char *name);
+
+// Copy a header's value (from pointer p, bounded by end) up to but not
+// including CR/LF into out. Writes at most cap-1 bytes + NUL. Returns
+// the number of bytes written (excluding NUL).
+int header_value(const char *p, const char *end, char *out, int cap);
+
+// Extract the "received=" parameter from the first Via header of a
+// response. A registrar adds it (RFC 3261 §18.2.1) with the public source
+// IP it actually saw when that differs from our sent-by host — i.e. the
+// dongle's address as seen from outside the NAT. Writes the IP into out
+// and returns 1; returns 0 (out cleared) when no received= is present.
+int parse_via_received(const char *resp, int resp_len, char *out, int cap);
+
+// Extract the request method (first whitespace-delimited token on the
+// request line). Writes at most cap-1 bytes + NUL. Returns the number of
+// bytes written.
+int parse_method(const char *pkt, int len, char *method, int cap);
+
+// Parse the numeric status from a response line "SIP/2.0 NNN Reason…".
+// Returns -1 if the first line doesn't look like a status line.
+int parse_status_code(const char *resp, int len);
+
+// Copy the reason phrase from a status line "SIP/2.0 NNN Reason…" — the
+// text after the numeric code, trimmed of trailing CR/LF — into out.
+// Writes at most cap-1 bytes + NUL. Returns the number of bytes written
+// (0 and empty out if the line isn't a status line or carries no phrase).
+// Registrars often put the actionable cause here ("Forbidden - Registration
+// limit exceeded"), so surfacing it turns a bare "403" into a diagnosis.
+int parse_reason_phrase(const char *resp, int len, char *out, int cap);
+
+// Parse the granted REGISTER expiry (in seconds) for OUR binding from a
+// 200 OK response. Per RFC 3261 §10.2.4 a contact-level ";expires=<n>"
+// parameter takes precedence over the top-level Expires header.
+//
+// A 200 OK echoes every binding on the AOR, so on a line shared with the
+// router's own VoIP client there are several Contact headers with
+// differing leases. `instance` is the +sip.instance UUID we registered
+// with (config_device_id()): the Contact carrying it identifies our
+// binding and its ";expires=" is returned. A lone Contact is taken as
+// ours even without a match; among several foreign bindings with no
+// match we do NOT guess and fall back to the top-level Expires header.
+// Pass NULL/"" to opt out of disambiguation entirely — then the first
+// Contact wins (legacy behaviour). Returns -1 when nothing applies, in which
+// case the caller should retain whatever value it requested. Values are
+// clamped to 30 days as a sanity bound on parser overflow.
+int parse_register_expires(const char *resp, int resp_len, const char *instance);
+
+// Extract the numeric part of the CSeq header. 0 if absent or malformed.
+uint32_t parse_cseq(const char *req, int req_len);
+
+// Copy the Call-ID header value (trimmed of trailing whitespace) into
+// out. Writes at most cap-1 bytes + NUL; out[0] = '\0' if the header is
+// absent.
+void parse_call_id(const char *req, int req_len, char *out, int cap);
+
+// Find the ";tag=<value>" parameter inside a header value and copy its
+// value. out[0] = '\0' if no tag is present.
+void parse_tag(const char *hdr_val, int val_len, char *out, int cap);
+
+// Extract the URI from a From/To/Contact header value, stripping display
+// name, <…> brackets, and URI parameters. Example:
+//   "Alice" <sip:alice@example.com;transport=udp>;tag=xyz → sip:alice@example.com
+void parse_uri(const char *hdr_val, int val_len, char *out, int cap);
+
+// Extract the user part of a SIP/SIPS/TEL URI: "sip:01234@host" → "01234".
+// Returns the length written (0 if the URI is malformed / has no user).
+int user_from_uri(const char *uri, char *out, int cap);
+
+// Extract the display name of a From/To header. Handles both quoted
+// ("Name Surname") and unquoted (single token) forms, trims whitespace,
+// returns 0 and empty out if no display name is present.
+int parse_display_name(const char *hdr_val, int val_len, char *out, int cap);
+
+// True if the string looks like a human rendering of a phone number —
+// digits plus any of ' +-/().'. Used to distinguish "display name is
+// really just the number" from "display name is an actual name".
+bool is_phone_number_like(const char *s);
+
+// True if the SIP From display name names a real phonebook contact the
+// user has saved locally — i.e., a non-empty, non-numeric label that
+// is *not* the "SPAM" tag the Fritz!Box stamps onto entries pulled in
+// via PhoneBlock's CardDAV blocklist subscription. Those SPAM entries
+// must continue to be checked against the API and reported, even
+// though they technically live in the phonebook.
+//
+// Returns false for: empty strings, plain numbers (handled by
+// is_phone_number_like), and any label whose first non-space token is
+// "SPAM" (case-insensitive, with or without trailing punctuation like
+// the "SPAM:" marker used by AddressResource.vCardContent()).
+bool is_known_contact(const char *display);
+
+// True if the normalized number is plausible as an external phone number
+// to query. Excludes Fritz!Box dial codes (**NN), feature codes
+// (*21#...), and anything that doesn't start with a digit or '+'.
+bool looks_dialable(const char *number);
+
+// Normalize a phone number to E.164 international form. `dial_prefix` is
+// the country of the line in "+NN" form (config_dial_prefix()) and is only
+// consulted for the national case — with "+44" for a UK line:
+//   national "07520694441"     → "+447520694441"
+//   international "0044…"      → "+44…"
+//   international "+44…"       → "+44…" (unchanged)
+//   international "00<cc>…"    → "+<cc>…" (any other country code)
+// Non-phone inputs (**622, *21#, empty) pass through unchanged so the
+// caller can recognize them via looks_dialable(). Whitespace, dashes,
+// parentheses and slashes are stripped before prefix handling.
+// The "always-send-international" shape is needed for PhoneBlock's
+// privacy-extension hashed-number lookup — which is why a wrong
+// dial_prefix breaks the spam lookup outright rather than just
+// mislabelling the caller's country (issue #505).
+//
+// The trunk prefix and international escape that go with the country come
+// from dial_rules_for(), so lines whose grammar is not Germany's work too:
+// "+1" strips a leading "1" and recognises "011" as the escape, "+39" keeps
+// the leading zero (Italy has no trunk prefix), "+7" uses "8" and "810".
+// A bare national number is expanded with the country code — a caller ID
+// arrives from the Fritz!Box in canonical form, so unlike a hand-typed
+// barring entry (see phone_normalise) there is nothing to guess.
+//
+// The prefix is passed in rather than read from config so the unit stays
+// pure and host-testable; callers use config_dial_prefix().
+void normalize_e164(const char *raw, char *out, int cap, const char *dial_prefix);
+
+// Case-insensitive compare of two non-empty Call-IDs. Returns false if
+// either side is NULL or empty.
+bool same_call_id(const char *a, const char *b);
+
+// Extract the connection IP from the SDP "c=IN IP4 <ip>" line. out is
+// empty if the line is absent.
+void parse_sdp_connection_ip(const char *msg, int msg_len, char *out, int cap);
+
+// Extract the RTP port from the SDP "m=audio <port> …" line. Returns 0
+// if the line is absent or malformed.
+int parse_sdp_audio_port(const char *msg, int msg_len);
+
+// True if the SDP "m=audio" line advertises the secure RTP/SAVP transport
+// profile (as opposed to plain RTP/AVP). Telekom's IMS offers RTP/SAVP and
+// rejects a plain RTP/AVP answer.
+int parse_sdp_audio_savp(const char *msg, int msg_len);
+
+// Scan the SDP for the first "a=crypto:" line offering the
+// AES_CM_128_HMAC_SHA1_80 SDES suite with an inline: key. On success
+// returns the crypto tag (a positive integer that the SRTP answer must
+// echo) and copies the base64 inline key (without any trailing
+// "|lifetime|MKI" parameters) into key_b64. Returns 0 — and clears
+// key_b64 — when no supported crypto suite is offered.
+int parse_sdp_crypto(const char *msg, int msg_len, char *key_b64, int cap);

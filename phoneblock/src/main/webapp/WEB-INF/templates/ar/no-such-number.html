@@ -1,15 +1,35 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head}"></head>
+<head th:replace="~{fragments/page :: head(titleKey=null, descriptionKey=null, titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
 
 <section class="section">
 <div class="content">
-	<h1 data-tx="t0001">رقم الهاتف ☎ <span th:text="${number}"></span> غير موجود</h1>
+	<h1 data-tx="t0001:657a0bf2">رقم الهاتف ☎ <span th:text="${number}"></span> غير موجود</h1>
 
-	<p data-tx="t0002">الرقم الذي تبحث عنه ليس رقم هاتف. يرجى تصحيح بحثك والمحاولة مرة أخرى!</p>
+	<p data-tx="t0002:d5692a3b">الرقم الذي تبحث عنه ليس رقم هاتف. يرجى تصحيح بحثك والمحاولة مرة أخرى!</p>
+
+	<h2 data-tx="t0003:379d2439">تنسيقات البحث المدعومة</h2>
+
+	<p data-tx="t0004:c262e767">يمكنك إدخال أرقام الهاتف بتنسيقات مختلفة:</p>
+
+	<ul>
+		<li><strong data-tx="t0005:6c2339bd">التهجئة الدولية بـ +:</strong> <code>+49 30 12345678</code></li>
+		<li>
+			<strong data-tx="t0010:11db8a31">الترميز الدولي مع <span th:text="${internationalPrefix}">00</span>:</strong>
+			<code><span th:text="${internationalPrefix}">00</span>49 30 12345678</code>
+		</li>
+		<li data-tx="t0011:ddfb97e5"><strong> التهجئة الوطنية: <code> <span th:text="${trunkPrefix}"> 30 12345678</span></code> (بناءً على رمز منطقتك الحالي)</strong></li>
+	</ul>
+
+	<div class="notification is-info">
+		<p>
+			<strong data-tx="t0008:3be3cc00">رمز منطقتك الحالي</strong> <span th:text="${currentDialPrefix}">+49</span>
+		</p>
+		<p data-tx="t0009:369b0717">💡 إذا كنت <a th:href="@{/login}"> مسجلاً الدخول، يمكنك تكوين رمز منطقة الاتصال الخاص بك بشكل دائم في <a th:href="@{/settings}"> الإعدادات . يضمن ذلك تفسير أرقام الهواتف الوطنية بشكل صحيح.</a></a></p>
+	</div>
 </div>
 </section>
 

@@ -1,150 +1,190 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head(title=#{page.setup.title})}"></head>
+<head th:replace="~{fragments/page :: head(titleKey='page.setup.title', descriptionKey='page.setup.description', titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header(location=${currentPage})}"></div>
 
 <section class="section">
 	<div class="content">
-		<h1 data-tx="t0001">Installation som telefonbog</h1>
+		<h1 data-tx="t0001:3dfe1d89">Installation som telefonbog</h1>
 
-<th:block th:unless="${token}">
-		<p data-tx="t0002">For at installere blokeringslisten skal du bruge en <a th:href="@{/link/fritzbox}">"FRITZ!Box"-internetrouter fra AVM</a> og en PhoneBlock-konto. Det behøver ikke nødvendigvis at være den nyeste model, men du bør tjekke, om den nyeste FRITZ!OS er installeret på den (07.29 eller nyere). Hvis det ikke er tilfældet, kan du bruge følgende installationsvejledning til at tjekke, om din version allerede tilbyder de nødvendige muligheder.</p>
-		
-		<p data-tx="t0003">Bemærk: På grund af tekniske begrænsninger i Fritz!Box kan hele blokeringslisten ikke indlæses i en telefonbog. Derfor giver opsætning af en <a th:href="@{/anrufbeantworter}">PhoneBlock-telefonsvarer</a> bedre beskyttelse mod SPAM-opkald.</p>
-		
-		<div class="columns" th:unless="${login}">
-		  <div class="column is-half is-offset-one-quarter">
-			<a th:href="@{/login(location='/setup')}">
-				<button class="button is-medium is-info is-fullwidth" data-tx="t0004">Opret en PhoneBlock-konto</button>
-			</a>
-		  </div>
-		</div>
-		<p data-tx="t0005" th:if="${login}">Du er allerede registreret som <code dir="ltr" th:text="${userName}"></code>, fantastisk! Du kan komme i gang med det samme.</p>
-</th:block>
+<p data-tx="t0002:10d70c8f">For at installere blokeringslisten skal du bruge en <a th:href="@{/link/fritzbox}">"FRITZ!Box"-internetrouter fra AVM</a> og en PhoneBlock-konto. Det behøver ikke nødvendigvis at være den nyeste model, men du bør tjekke, om den nyeste FRITZ!OS er installeret på den (07.29 eller nyere). Hvis det ikke er tilfældet, kan du bruge følgende installationsvejledning til at tjekke, om din version allerede tilbyder de nødvendige muligheder.</p>
 
-<div class="columns" th:if="${token}">
-  <div class="column">
-	<div class="tile is-ancestor">
-      <div class="tile is-parent">
-      	<article class="tile is-child notification">
-	        <p class="title" data-tx="t0006">Dine login-oplysninger</p>
-	        <p class="subtitle" data-tx="t0007">Du skal bruge følgende data til installationen.</p>
-	        <div class="content">
-		
-				<div class="field">
-				  <label class="label" data-tx="t0008">Internetadresse på CardDAV-serveren</label>
-				  <div class="control"><code dir="ltr" id="url" th:text="|https://phoneblock.net${contextPath}/contacts/|"></code><a class="copyToClipboard" data-tx="t0034" href="#" id="url_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a></div>
-				</div>
-				
-				<div class="field">
-				  <label class="label" data-tx="t0009">Brugernavn</label>
-				  <div class="control"><code dir="ltr" id="login" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0035" id="login_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a></div>
-				</div>
-				
-				<div class="field">
-				  <label class="label" data-tx="t0010">adgangskode</label>
-				  <div class="control"><code dir="ltr" id="passwd" th:text="${token}"></code><a class="copyToClipboard" data-tx="t0036" href="#" id="passwd_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a></div>
-				</div>
-			</div>
-		</article>
-	  </div>
-    </div>
+<div class="notification is-warning">
+<p data-tx="t0003:f83d3ee2"><b>Note:</b> På grund af tekniske begrænsninger i Fritz!Box kan hele blokeringslisten ikke indlæses i en telefonbog. Derfor er det kun <a th:href="@{/dongle}">PhoneBlock-donglen</a>, der giver optimal beskyttelse mod SPAM-opkald.</p>
+</div>
+
+<p data-tx="t0052:818cc317">Brug følgende trin til at opsætte blokeringslisten:</p>
+
+<ol>
+	<li><a data-tx="t0053:5cb36b90" href="#register">Registrer dig med PhoneBlock</a> <span class="tag is-success" data-tx="t0054:3378b39d" th:if="${userName}">✓ Færdig</span></li>
+	<li><a data-tx="t0055:d44f7d1" href="#fritzbox">Log ind på FRITZ!Box</a></li>
+	<li><a data-tx="t0056:d6fa7b4e" href="#phonebook">Opret en ny "Blocklist"-telefonbog</a></li>
+	<li><a data-tx="t0070:958ad5cf" href="#create-token">Generer CardDAV-token</a> <span class="tag is-success" data-tx="t0058:3378b39d" th:if="${cardDavToken}">✓ Færdig</span></li>
+	<li><a data-tx="t0071:9e1ea08e" href="#credentials">Indtast login-data i Fritz!Box</a></li>
+	<li><a data-tx="t0059:4f985acc" href="#verify">Tjek installationen</a></li>
+	<li><a data-tx="t0060:91946e2c" href="#block">Aktiver opkaldsspærring</a></li>
+</ol>
+
+<h2 data-tx="t0061:e8d5bb12" id="register">Trin 1: Registrer dig hos PhoneBlock</h2>
+
+<p data-tx="t0062:fffc269" th:unless="${userName}">For det første skal du registrere dig eller logge ind på PhoneBlock for at starte opsætningen.</p>
+
+<div class="columns" th:unless="${userName}">
+  <div class="column is-half is-offset-one-quarter">
+	<a th:href="@{/login(location='/setup#register')}">
+		<button class="button is-medium is-info is-fullwidth">
+			<span class="icon">
+				<i class="fa-solid fa-right-to-bracket"></i>
+			</span>
+			<span data-tx="t0063:1dc205">Log ind</span>
+		</button>
+	</a>
   </div>
 </div>
+<p data-tx="t0064:c41dd734" th:if="${userName}"><span class="tag is-success is-large"><i class="fa-solid fa-check"></i></span> Du er logget ind som <code dir="ltr" th:text="${userName}"></code>, godt! Fortsæt til næste trin.</p>
 		
-		<h2 data-tx="t0011">Log ind på din FRITZ!Box</h2>
-		
-		<p data-tx="t0012">For at det skal fungere, skal du være hjemme i dit WLAN, eller din computer skal være forbundet direkte til FRITZ!Box via et kabel. FRITZ!Box vil først bede dig om din adgangskode. Hvis du aldrig har logget ind før, finder du adgangskoden på undersiden af enheden.</p>
-		
+		<h2 data-tx="t0065:8bf85697" id="fritzbox">Trin 2: Log ind på FRITZ!Box</h2>
+
+		<p data-tx="t0012:2354f60">For at det skal fungere, skal du være hjemme i dit WLAN, eller din computer skal være forbundet direkte til FRITZ!Box via et kabel. FRITZ!Box vil først bede dig om din adgangskode. Hvis du aldrig har logget ind før, finder du adgangskoden på undersiden af enheden.</p>
+
 		<div class="columns">
 		  <div class="column is-half is-offset-one-quarter">
 			<a href="http://fritz.box" target="_blank">
-				<button class="button is-medium is-primary is-fullwidth" data-tx="t0013">Log ind på FRITZ!Box</button>
+				<button class="button is-medium is-primary is-fullwidth" data-tx="t0013:d44f7d1">Log ind på FRITZ!Box</button>
 			</a>
 		  </div>
 		</div>
+
+		<h2 data-tx="t0066:502b2c97" id="phonebook">Trin 3: Opret en ny "Blocklist"-telefonbog</h2>
 		
-		<h2 data-tx="t0014">Opret en ny "Blocklist"-telefonbog</h2>
-		
-		<p data-tx="t0015">For at din FRITZ!Box kan blokere spamopkald, skal den have sin egen telefonbog, hvor alle numre på uønskede opkaldere er skrevet ind. Kald denne telefonbog for "Blokeringsliste". Til denne</p>
+		<p data-tx="t0015:60de307b">For at din FRITZ!Box kan blokere spamopkald, skal den have sin egen telefonbog, hvor alle numre på uønskede opkaldere er skrevet ind. Kald denne telefonbog for "Blokeringsliste". Til denne</p>
 		
 		<ol>
-			<li data-tx="t0016">Gå først til afsnittet "Telefoni",</li>
-			<li data-tx="t0017">vælg menupunktet "Telefonbog", og</li>
-			<li data-tx="t0018">Klik derefter på linket "Ny telefonbog".</li>
+			<li data-tx="t0016:ee677f2e">Gå først til afsnittet "Telefoni",</li>
+			<li data-tx="t0017:bf3c833">vælg menupunktet "Telefonbog", og</li>
+			<li data-tx="t0018:9545daeb">Klik derefter på linket "Ny telefonbog".</li>
 		</ol>
 		
 		<div class="columns">
 		  <div class="column is-8 is-offset-2">
-			<img alt="Fritz!Box opkaldsliste" class="image" data-tx="t0037" th:src="@{/assets/img/setup/02-navigate-to-addressbooks.png}"/>
+			<img alt="Fritz!Box opkaldsliste" class="image" data-tx="t0037:b9f34dc9" th:src="@{/assets/img/setup/02-navigate-to-addressbooks.png}"/>
 		  </div>
 		</div>
 		
-		<h2 data-tx="t0019">Indtast login-oplysningerne til din PhoneBlock-konto</h2>
-		
-		<p data-tx="t0020">Nu skal du bruge loginoplysningerne til din PhoneBlock-konto.</p>
+		<h2 data-tx="t0072:356d507a" id="create-token">Trin 4: Opret CardDAV-token</h2>
 
-		<ul>
-			<li data-tx="t0021"><span class="tag is-danger">1</span> Giv den telefonbog, der skal bruges som blokeringsliste, navnet <code dir="ltr">Blokeringsliste</code>. Du skal bruge dette navn igen i næste trin.</li>
+		<p data-tx="t0073:5843bc02">Til opsætningen i din Fritz!Box skal du bruge et særligt CardDAV-token som adgangskode. Dette token bruges kun til forbindelsen mellem din Fritz!Box og PhoneBlock og kan til enhver tid tilbagekaldes i indstillingerne.</p>
 
-			<li data-tx="t0022">Vælg nu <span class="tag is-danger">2</span> indstillingen <i>Brug telefonbog fra en onlineudbyder</i>.</li>
+		<th:block th:if="${cardDavToken}">
+			<p data-tx="t0074:f786328e"><span class="tag is-success is-large"><i class="fa-solid fa-check"></i></span> Du har oprettet et token! Fortsæt til næste trin.</p>
+		</th:block>
 
-			<li data-tx="t0023">Derefter kan du vælge <span class="tag is-danger">3</span> udbyderen <i>CardDAV-udbyder</i>.</li>
+		<th:block th:if="${userName} and ${!cardDavToken}">
+			<p data-tx="t0075:ca529190">Opret nu et token til Fritz! Du kan eventuelt tilføje en kommentar, så du senere ved, hvad tokenet skal bruges til (f.eks. "Fritz!Box stue").</p>
 
-			<li data-tx="t0024">Næsten færdig, nu er login-dataene <span class="tag is-danger">4</span>. Det er bedst at overføre dem med Cut&amp;Paste for at undgå tastefejl! <ul>
-					<li> Indtast URL'en til PhoneBlock-adressebogen i feltet <i>Internetadressen til CardDAV-serveren</i>: <code dir="ltr" id="url2" th:text="|https://phoneblock.net${contextPath}/contacts/|"></code><a class="copyToClipboard" data-tx="t0042" href="#" id="url2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a> </li>
+			<form method="post" th:action="@{/update-settings(action='createToken', location='/setup#create-token')}">
+				<input name="token-type" type="hidden" value="CARDDAV"/>
+				<div class="field has-addons">
+					<div class="control is-expanded">
+						<input class="input" data-tx="t0049:fe053998" name="token-label" placeholder="Valgfrit: Kommentar (f.eks. &quot;Fritz!Box stue&quot;)" type="text"/>
+					</div>
+					<div class="control">
+						<button class="button is-primary" data-tx="t0050:21ce66dd" type="submit"><i class="fa-solid fa-key"></i> Opret token</button>
+					</div>
+				</div>
+			</form>
+		</th:block>
 
-					<li> Indtast brugernavnet <th:block th:if="${userName}"><code dir="ltr" id="login2" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0043" href="#" id="login2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a></th:block>, som du modtog under <a th:href="@{/login(location='/settings')}">registreringen</a>, i feltet <i>Brugernavn</i>. </li>
+		<p data-tx="t0051:9fe447a" th:unless="${userName}">Du skal først <a th:href="@{/login(location='/setup')}">logge ind</a> for at oprette et token.</p>
 
-					<li>Kodeordet<th:block th:unless="${token}">, som du fik under <a th:href="@{/login(location='/settings')}">registreringen</a>, </th:block><th:block th:if="${token}"> <code dir="ltr" id="passwd2" th:text="${token}"></code><a class="copyToClipboard" data-tx="t0044" href="#" id="passwd2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a>,</th:block> skal nu indtastes i feltet <i>Kodeord</i>. </li>
-				    </ul>.</li>
+		<h2 data-tx="t0076:35997409" id="credentials">Trin 5: Indtast login-data i Fritz!Box</h2>
 
-			<li data-tx="t0025">Nu kan du bekræfte <span class="tag is-danger">5</span> oprettelsen af den nye telefonbog. Vær opmærksom på dette: Vælg <b>ingen af dine telefoner</b> under "Telefontildeling"! Ellers vil du kun finde SPAM-opkald i kontakterne på din telefon.</li>
-		</ul>
-		
+		<p data-tx="t0020:e4a227b8">Nu skal du indtaste login-dataene i FRITZ!</p>
+
+		<ol>
+			<li>
+				<div data-tx="t0021:d5b1f48a">Indtast navnet <code dir="ltr">Blocklist</code> for den telefonbog, der skal bruges som blokliste. Du skal bruge dette navn igen i næste trin.</div>
+			</li>
+
+			<li data-tx="t0022:32f6ec7">Vælg indstillingen <i>Brug telefonbog fra en onlineudbyder</i>.</li>
+
+			<li data-tx="t0023:d59c1b48">Vælg udbyderen <i>CardDAV-udbyder</i>.</li>
+
+			<li>
+				<div data-tx="t0079:c5926e14">Overfør login-dataene (helst ved hjælp af Klip&amp;Pasta for at undgå tastefejl).</div>
+
+				<ul>
+					<li data-tx="t0080:d646341e"><span><i>Internetadresse på CardDAV-serveren</i>:</span> <code dir="ltr" id="url2" th:text="|https://phoneblock.net${contextPath}/contacts/|"></code><a class="copyToClipboard" data-tx="t0042:3f7efe41" href="#" id="url2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a> (URL til PhoneBlock-adressebogen)</li>
+
+					<li>
+						<i data-tx="t0081:548c40c1">Brugernavn</i>: 
+						
+						<th:block data-tx="t0082:baafe4ec" th:if="${userName}"><code dir="ltr" id="login2" th:text="${userName}"></code><a class="copyToClipboard" data-tx="t0043:3f7efe41" href="#" id="login2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a> (Dit PhoneBlock-brugernavn)</th:block>
+
+						<th:block data-tx="t0083:c9c6fa56" th:unless="${userName}">Du skal først logge ind (se <a href="#register">Trin 1</a>).</th:block>
+					</li>
+
+					<li>
+						<span>
+							<i data-tx="t0084:e99dee32">adgangskode</i>:
+						</span>
+						
+						<th:block data-tx="t0085:1d7c0447" th:if="${cardDavToken}"><code dir="ltr" id="passwd2" th:text="${cardDavToken.token}"></code><a class="copyToClipboard" data-tx="t0044:3f7efe41" href="#" id="passwd2_" title="Kopier til udklipsholderen."><i class="fa-solid fa-copy"></i></a> (symbolet fra trin 4)</th:block>
+						
+						<th:block data-tx="t0078:c657e130" th:unless="${cardDavToken}">Du skal først oprette et token (se <a href="#create-token">Trin 4</a>).</th:block>
+					</li>
+				</ul>
+			</li>
+			
+			<li>
+				<p data-tx="t0086:95ea1a24"><b>Opmærksomhed</b>: Vælg <b>ingen af dine telefoner</b> under "Telefontildeling"! Ellers vil du kun finde SPAM-opkald i kontakterne på din telefon.</p>
+				<p data-tx="t0087:79f2e6a0">Du kan nu bekræfte oprettelsen af den nye telefonbog.</p>
+			</li>
+		</ol>
+
 		<div class="columns">
 		  <div class="column is-8 is-offset-2">
-			<img alt="Opret ny adressebog" class="image" data-tx="t0038" th:src="@{/assets/img/setup/03-add-address-book.png}"/>
+			<img alt="Opret ny adressebog" class="image" data-tx="t0038:50de9d04" th:src="@{/assets/img/setup/03-add-address-book.png}"/>
 		  </div>
 		</div>
 
-		<h2 data-tx="t0026">Tjek, om din "blokliste" er blevet oprettet</h2>
-		
-		<p data-tx="t0027">Hvis alt gik godt, har din FRITZ!Box indlæst alle numrene fra PhoneBlock-blokeringslisten. Du bør nu have en ny "Blocklist"-telefonbog i afsnittet "Telefoni / Telefonbog". Hvis du vælger fanen "Blokliste", kan du se alle numrene på de aktuelle spamopkald.</p>
-		
-		<div class="columns">
-		  <div class="column is-8 is-offset-2">
-			<img alt="Vis den hentede blokliste" class="image" data-tx="t0039" th:src="@{/assets/img/setup/04-check-blocklist.png}"/>
-		  </div>
-		</div>
+		<h2 data-tx="t0068:49ed5643" id="verify">Trin 6: Tjek installationen</h2>
 
-		<h2 data-tx="t0028">Lad FRITZ!Box afvise opkald fra "blokeringslisten"</h2>
-		
-		<p data-tx="t0029">I afsnittet "Telefoni / Opkaldshåndtering" kan du nu angive den nye "Blocklist"-telefonbog som det telefonnummerområde, der skal blokeres.</p>			
-		
-		<p data-tx="t0030">Rul ned til underpunktet "Bloker nummerintervaller", og klik på knappen "Tilføj interval".</p>
+		<p data-tx="t0027:6bd9c881">Hvis alt gik godt, har din FRITZ!Box indlæst alle numrene fra PhoneBlock-blokeringslisten. Du bør nu have en ny "Blocklist"-telefonbog i afsnittet "Telefoni / Telefonbog". Hvis du vælger fanen "Blokliste", kan du se alle numrene på de aktuelle spamopkald.</p>
 
 		<div class="columns">
 		  <div class="column is-8 is-offset-2">
-			<img alt="Tilføj ny opkaldsspærring" class="image" data-tx="t0040" th:src="@{/assets/img/setup/05-add-blocklist.png}"/>
+			<img alt="Vis den hentede blokliste" class="image" data-tx="t0039:3d7cbd9f" th:src="@{/assets/img/setup/04-check-blocklist.png}"/>
 		  </div>
 		</div>
+
+		<h2 data-tx="t0069:16c40784" id="block">Trin 7: Aktivér opkaldsspærring</h2>
 		
-		<p data-tx="t0031">I det nye skærmbillede skal du vælge "Telefonbog" i udvalget for "Område" og vælge den nyoprettede telefonbog "Blokeringsliste" som den "Telefonbog", der skal blokeres.</p>
+		<p data-tx="t0029:ffbbaf55">I afsnittet "Telefoni / Opkaldshåndtering" kan du nu angive den nye "Blocklist"-telefonbog som det telefonnummerområde, der skal blokeres.</p>			
+		
+		<p data-tx="t0030:2d9a1437">Rul ned til underpunktet "Bloker nummerintervaller", og klik på knappen "Tilføj interval".</p>
 
 		<div class="columns">
 		  <div class="column is-8 is-offset-2">
-			<img alt="Bloker opkald med et telefonnummer på blokeringslisten" class="image" data-tx="t0041" th:src="@{/assets/img/setup/06-create-blocklist.png}"/>
+			<img alt="Tilføj ny opkaldsspærring" class="image" data-tx="t0040:e5649829" th:src="@{/assets/img/setup/05-add-blocklist.png}"/>
 		  </div>
 		</div>
 		
-		<p data-tx="t0032">Perfekt! Du er færdig med opsætningen. Din telefon burde nu ringe meget sjældnere på grund af en uønsket opkalder. Og hvis den gør, kan du nemt lukke munden på ballademageren for dig og hele PhoneBlock-fællesskabet:</p>
+		<p data-tx="t0031:56b8a409">I det nye skærmbillede skal du vælge "Telefonbog" i udvalget for "Område" og vælge den nyoprettede telefonbog "Blokeringsliste" som den "Telefonbog", der skal blokeres.</p>
+
+		<div class="columns">
+		  <div class="column is-8 is-offset-2">
+			<img alt="Bloker opkald med et telefonnummer på blokeringslisten" class="image" data-tx="t0041:a8687137" th:src="@{/assets/img/setup/06-create-blocklist.png}"/>
+		  </div>
+		</div>
+		
+		<p data-tx="t0032:8943dc0d">Perfekt! Du er færdig med opsætningen. Din telefon burde nu ringe meget sjældnere på grund af en uønsket opkalder. Og hvis den gør, kan du nemt lukke munden på ballademageren for dig og hele PhoneBlock-fællesskabet:</p>
 		
 		<div class="columns">
 		  <div class="column is-half is-offset-one-quarter">
-			<a th:href="@{/block}"><button class="button is-medium is-primary is-fullwidth" data-tx="t0033">Bloker telefonnummer</button></a>
+			<a th:href="@{/blacklist}"><button class="button is-medium is-primary is-fullwidth" data-tx="t0088:fcebb7bf">Bloker telefonnummer</button></a>
 		  </div>
 		</div>
 	</div>

@@ -47,6 +47,7 @@ import org.zoolu.net.AddressType;
 import org.zoolu.util.ConfigFile;
 
 import de.haumacher.phoneblock.analysis.NumberAnalyzer;
+import de.haumacher.phoneblock.app.api.model.PhoneNumer;
 import de.haumacher.phoneblock.answerbot.AnswerBot;
 import de.haumacher.phoneblock.answerbot.AnswerbotConfig;
 import de.haumacher.phoneblock.answerbot.CustomerConfig;
@@ -59,6 +60,8 @@ import de.haumacher.phoneblock.db.DBAnswerBotDynDns;
 import de.haumacher.phoneblock.db.DBAnswerBotSip;
 import de.haumacher.phoneblock.db.DBService;
 import de.haumacher.phoneblock.db.DBUserSettings;
+import de.haumacher.phoneblock.db.Ema;
+import de.haumacher.phoneblock.db.Signals;
 import de.haumacher.phoneblock.db.SpamReports;
 import de.haumacher.phoneblock.db.Users;
 import de.haumacher.phoneblock.db.settings.AnswerBotSip;
@@ -204,50 +207,64 @@ public class SipService implements ServletContextListener, RegistrationClientLis
 					}
 					
 					Boolean state = blocklist.getPersonalizationState(userId, phoneId);
-					
+
 					PhoneInfo info;
 					if (state != null) {
 						// There is a personalization for the calling number.
 						if (state.booleanValue()) {
 							// Locally blocked.
 							LOG.info("Caller is on blacklist of {}: {}", botName, phoneId);
-							info = PhoneInfo.create().setPhone(phoneId).setRating(Rating.B_MISSED).setVotes(1000).setVotesWildcard(1000);
+							info = NumberAnalyzer.phoneInfoFromId(phoneId)
+								.setRating(Rating.B_MISSED)
+								.setVotes(1000)
+								.setVotesWildcard(1000);
 						} else {
 							// On the exclude list.
 							LOG.info("Call form white-listed number of {}.", botName);
-							info = PhoneInfo.create().setPhone(phoneId).setRating(Rating.A_LEGITIMATE).setVotes(0);
+							info = NumberAnalyzer.phoneInfoFromId(phoneId)
+								.setRating(Rating.A_LEGITIMATE)
+								.setVotes(0);
 						}
 					} else {
 						info = db.getPhoneApiInfo(reports, phoneId);
 					}
-					
-					try {
-						if (info.getVotes() > 0) {
-							long now = System.currentTimeMillis();
-							reports.recordCall(info.getPhone(), now);
-							db.updateLocalization(reports, info.getPhone(), settings.getDialPrefix(), 0, 0, 1, now);
-							session.commit();
-						}
-					} catch (Exception ex) {
-						LOG.error("Failed to record call from " + info.getPhone() + ".", ex);
-					}
-					
+
+					// Reporting is *not* done here. fetchPhoneInfo runs for every
+					// incoming call regardless of whether the bot engages — the
+					// engagement decision is the bot framework's, based on user
+					// settings. The actual call gets reported once per pickup
+					// via processCallData (#342: every engaged call → one call
+					// signal, same as Fritz!Box / dongle / app).
 					return info;
 				}
 			}
-			
+
 			@Override
 			protected void processCallData(String userName, String from, long startTime, long duration) {
 				super.processCallData(userName, from, startTime, duration);
-				
+
 				DB db = _dbService.db();
 				try (SqlSession session = db.openSession()) {
 					Users users = session.getMapper(Users.class);
-					
+					SpamReports reports = session.getMapper(SpamReports.class);
+
 					long id = users.getAnswerBotId(userName);
 					users.recordCall(id, from, startTime, duration);
 					users.recordCallSummary(id, duration);
-					
+
+					// #342: every engaged call is reported through the same
+					// path Fritz!Box / dongle / app use — one call, one signal.
+					long ownerUserId = users.getAnswerBotUserId(userName);
+					DBUserSettings settings = users.getSettingsById(ownerUserId);
+					String dialPrefix = settings != null ? settings.getDialPrefix() : null;
+					PhoneNumer number = NumberAnalyzer.parsePhoneNumber(from, dialPrefix);
+					if (number != null) {
+						String phoneId = NumberAnalyzer.getPhoneId(number);
+						// Spam evidence is capped per user (the answer-bot owner) inside recordCall.
+						BlockList blocklist = session.getMapper(BlockList.class);
+						db.recordCall(reports, blocklist, ownerUserId, number, phoneId, dialPrefix, startTime);
+					}
+
 					session.commit();
 				}
 			}
@@ -562,9 +579,6 @@ public class SipService implements ServletContextListener, RegistrationClientLis
 
 	/**
 	 * Dynamically registers a new answer bot.
-	 * 
-	 * @param temporary Whether the bot is first activated and should only be
-	 *                  permanently activated, if the first registration succeeds.
 	 */
 	public void register(AnswerBotSip bot) throws UnknownHostException {
 		register(bot, toCustomerConfig(bot));
@@ -579,6 +593,7 @@ public class SipService implements ServletContextListener, RegistrationClientLis
 		regConfig.setRoute(new SipURI(getHost(bot)).addLr());
 		regConfig.setMinVotes(bot.getMinVotes());
 		regConfig.setWildcard(bot.isWildcards());
+		regConfig.setAcceptLocal(bot.isAcceptLocal());
 		return regConfig;
 	}
 

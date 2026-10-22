@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head th:replace="~{../fragments/page :: head(titleKey='page.mobile.response.title', descriptionKey=null, titleText=null, descriptionText=null)}"></head>
+
+<body th:dir="${currentLang.direction}">
+
+<div th:replace="~{../fragments/mobile :: header}"></div>
+
+<section class="section">
+<div class="content">
+
+<h1 data-tx="t0001:1bd232b9">إنهاء الارتباط النهائي</h1>
+
+<p data-tx="t0008:39b22977">إذا كنت ترى هذه الصفحة، فهذا يعني أن متصفحك لم يقم بإعادة توجيه الرابط إلى تطبيق PhoneBlock الخاص بك. انقر على الزر التالي لفتح الرابط في التطبيق:</p>
+
+<p>
+	<a class="button is-primary" th:href="|intent://phoneblock.net${contextPath}/mobile/response?loginToken=${loginToken}#Intent;scheme=https;package=de.haumacher.phoneblock_mobile;end|">
+		<span class="icon"><i class="fa-solid fa-mobile-screen"></i></span>
+		<span data-tx="t0009:70167705">فتح في التطبيق</span>
+	</a>
+</p>
+
+<p data-tx="t0010:a6c05ee6">إذا لم ينجح ذلك أيضًا، افتح هذه الصفحة يدويًا "في التطبيق". للقيام بذلك، افتح القائمة في الأسفل:</p>
+
+<img alt="فتح القائمة" data-tx="t0003:4910225c" th:src="@{/assets/img/mobile/connect-1.png}"/>
+	
+<p data-tx="t0004:2210ca0d">وحدد خيار "فتح مع التطبيق":</p>
+
+<img alt="الخيار &quot;فتح مع التطبيق" data-tx="t0005:7971c7c3" th:src="@{/assets/img/mobile/connect-2.png}"/>
+
+<p data-tx="t0006:4da0a1ad">رمز التفويض الخاص بك: <code id="loginToken" th:text="${loginToken}"></code><a class="copyToClipboard" data-tx="t0007:3f7efe41" id="loginToken_" title="نسخ إلى الحافظة."><i class="fa-solid fa-copy"></i></a></p>
+
+</div>
+</section>
+
+<div th:replace="~{../fragments/mobile :: footer}"></div>
+
+</body>
+</html>

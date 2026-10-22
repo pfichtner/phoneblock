@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import de.haumacher.phoneblock.db.settings.AnswerBotSip;
 import de.haumacher.phoneblock.db.settings.UserSettings;
+import de.haumacher.phoneblock.shared.Language;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.AddressException;
 
@@ -14,9 +15,9 @@ import jakarta.mail.internet.AddressException;
  * Test-only implementation of {@link MailService}.
  */
 public class DummyMailService implements MailService {
-	
+
 	private static final Logger LOG = LoggerFactory.getLogger(DummyMailService.class);
-	
+
 	public static final MailService INSTANCE = new DummyMailService();
 
 	@Override
@@ -25,14 +26,25 @@ public class DummyMailService implements MailService {
 	}
 
 	@Override
-	public void sendActivationMail(String receiver, String code)
+	public void sendActivationMail(String receiver, String code, Language language, boolean existingUser)
 			throws MessagingException, IOException, AddressException {
-		LOG.info("Send activation to {}: {}", receiver, code);
+		LOG.info("Send activation to {} in language {}: {}", receiver, language.tag, code);
 	}
-	
+
+	@Override
+	public void sendEmailChangeMail(String receiver, String code, Language language)
+			throws MessagingException, IOException, AddressException {
+		LOG.info("Send email change verification to {} in language {}: {}", receiver, language.tag, code);
+	}
+
 	@Override
 	public void sendWelcomeMail(UserSettings userSettings) {
 		LOG.info("Send welcome to {}.", userSettings.getEmail());
+	}
+
+	@Override
+	public void sendMobileWelcomeMail(UserSettings userSettings, String deviceLabel) {
+		LOG.info("Send mobile welcome to {} for device '{}'.", userSettings.getEmail(), deviceLabel);
 	}
 
 	@Override
@@ -50,6 +62,12 @@ public class DummyMailService implements MailService {
 	@Override
 	public boolean sendThanksMail(String donator, UserSettings userSettings, int amount) {
 		LOG.info("Send thanks to {}: {} ({})", userSettings.getEmail(), donator, amount);
+		return true;
+	}
+
+	@Override
+	public boolean sendDiagnosticsMail(UserSettings userSettings, String subject, String htmlBody) {
+		LOG.info("Send diagnostics mail to {}: {}", userSettings.getEmail(), subject);
 		return true;
 	}
 

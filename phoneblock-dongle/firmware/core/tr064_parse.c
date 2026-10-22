@@ -1,0 +1,275 @@
+// memmem() is a GNU extension; glibc needs _GNU_SOURCE to expose it
+// on the host-test build. ESP-IDF's newlib-based libc declares it
+// unconditionally and the IDF build system sets _GNU_SOURCE on the
+// command line, so guard against redefinition warnings there.
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#include "tr064_parse.h"
+
+#include <string.h>
+
+#include "strbuf.h"
+
+// Must be last: bans unsafe string APIs for the rest of this file.
+#include "banned_apis.h"
+
+int tr064_xml_find_text(const char *xml, const char *tag,
+                        char *out, size_t cap)
+{
+    size_t name_len = strlen(tag);
+    const char *p = xml;
+    while ((p = strchr(p, '<')) != NULL) {
+        if (p[1] == '/' || p[1] == '?' || p[1] == '!') { p++; continue; }
+        p++;
+        // Skip any "prefix:" before the local name.
+        const char *tag_end = p;
+        while (*tag_end && *tag_end != '>' && *tag_end != ' '
+               && *tag_end != '\t' && *tag_end != '/') tag_end++;
+        if (*tag_end == '\0') return -1;
+        const char *local = p;
+        const char *colon = memchr(p, ':', tag_end - p);
+        if (colon) local = colon + 1;
+        if ((size_t)(tag_end - local) == name_len
+            && strncmp(local, tag, name_len) == 0) {
+            // Found the opening tag. Skip attributes to the '>'.
+            const char *gt = strchr(tag_end, '>');
+            if (!gt) return -1;
+            if (gt[-1] == '/') {
+                // Self-closing empty element.
+                out[0] = '\0';
+                return 0;
+            }
+            const char *content_start = gt + 1;
+            // Find first "</…localname>" after content_start.
+            const char *q = content_start;
+            while ((q = strstr(q, "</")) != NULL) {
+                q += 2;
+                const char *qgt = strchr(q, '>');
+                if (!qgt) return -1;
+                const char *qlocal = q;
+                const char *qcolon = memchr(q, ':', qgt - q);
+                if (qcolon) qlocal = qcolon + 1;
+                if ((size_t)(qgt - qlocal) == name_len
+                    && strncmp(qlocal, tag, name_len) == 0) {
+                    size_t content_len = (q - 2) - content_start;
+                    if (content_len >= cap) content_len = cap - 1;
+                    memcpy(out, content_start, content_len);
+                    out[content_len] = '\0';
+                    return (int)content_len;
+                }
+                q = qgt + 1;
+            }
+            return -1;
+        }
+        p = tag_end;
+    }
+    return -1;
+}
+
+void tr064_xml_unescape_inplace(char *s)
+{
+    char *w = s;
+    for (const char *r = s; *r; ) {
+        if (*r == '&') {
+            if (strncmp(r, "&amp;",  5) == 0) { *w++ = '&';  r += 5; continue; }
+            if (strncmp(r, "&lt;",   4) == 0) { *w++ = '<';  r += 4; continue; }
+            if (strncmp(r, "&gt;",   4) == 0) { *w++ = '>';  r += 4; continue; }
+            if (strncmp(r, "&quot;", 6) == 0) { *w++ = '"';  r += 6; continue; }
+            if (strncmp(r, "&apos;", 6) == 0) { *w++ = '\''; r += 6; continue; }
+        }
+        *w++ = *r++;
+    }
+    *w = '\0';
+}
+
+void tr064_xml_escape(const char *in, char *out, size_t cap)
+{
+    size_t o = 0;
+    for (const char *p = in; *p && o + 6 < cap; p++) {
+        switch (*p) {
+            case '&':  strcpy(out + o, "&amp;");  o += 5; break;
+            case '<':  strcpy(out + o, "&lt;");   o += 4; break;
+            case '>':  strcpy(out + o, "&gt;");   o += 4; break;
+            case '"':  strcpy(out + o, "&quot;"); o += 6; break;
+            case '\'': strcpy(out + o, "&apos;"); o += 6; break;
+            default:   out[o++] = *p; break;
+        }
+    }
+    out[o] = '\0';
+}
+
+bool tr064_pick_default_user(char *xml, char *out, size_t cap)
+{
+    if (!out || !cap) return false;
+    out[0] = '\0';
+
+    // Preferred: the attribute-form last_user="1" marker.
+    const char *markers[] = {
+        "last_user=\"1\"", "last_user='1'", "last_user=1", NULL
+    };
+    for (int i = 0; markers[i]; i++) {
+        const char *m = strstr(xml, markers[i]);
+        if (!m) continue;
+        const char *gt = strchr(m, '>');
+        if (!gt) continue;
+        const char *start = gt + 1;
+        const char *end = strstr(start, "</Username>");
+        if (!end) continue;
+        size_t n = end - start;
+        if (n >= cap) n = cap - 1;
+        memcpy(out, start, n);
+        out[n] = '\0';
+        if (out[0]) return true;
+    }
+
+    // Legacy wrapper form.
+    char *flag = strstr(xml, "<LastUser>1</LastUser>");
+    char *block_start = NULL, *block_end = NULL;
+    if (flag) {
+        const char *p = xml;
+        while ((p = strstr(p, "<User>")) != NULL && p < flag) {
+            block_start = (char *)p;
+            p++;
+        }
+        if (block_start) block_end = strstr(flag, "</User>");
+    }
+    if (block_start && block_end) {
+        char save = *block_end;
+        *block_end = '\0';
+        int found = tr064_xml_find_text(block_start, "Username", out, cap);
+        *block_end = save;
+        if (found >= 0 && out[0]) return true;
+    }
+
+    // Fallback: first Username element (ignoring any attributes).
+    return tr064_xml_find_text(xml, "Username", out, cap) >= 0 && out[0];
+}
+
+int tr064_parse_phonebook_contacts(char *xml, int xml_len,
+                                   tr064_contact_cb_t cb, void *user)
+{
+    if (!xml || xml_len <= 0 || !cb) return 0;
+    int count = 0;
+    char *p = xml;
+    int remaining = xml_len;
+    while (remaining > 0) {
+        char *open = memmem(p, remaining, "<contact", 8);
+        if (!open) break;
+        // Need at least one byte after "<contact" to classify the tag. If the
+        // match sits flush against the buffer end, reading open[8] would run
+        // one past it (and no complete <contact…>…</contact> can follow).
+        if ((open - xml) + 8 >= xml_len) break;
+        char after = open[8];
+        if (after != '>' && after != ' ' && after != '\t'
+            && after != '\r' && after != '\n') {
+            // False match like <contacts>; advance past it.
+            p = open + 8;
+            remaining = xml_len - (p - xml);
+            continue;
+        }
+        char *close = memmem(open, remaining - (open - p),
+                             "</contact>", 10);
+        if (!close) break;
+
+        char save = *close;
+        *close = '\0';
+        char uid[32]    = "";
+        char number[48] = "";
+        tr064_xml_find_text(open, "uniqueid", uid,    sizeof(uid));
+        tr064_xml_find_text(open, "number",   number, sizeof(number));
+        *close = save;
+
+        if (uid[0] && number[0]) {
+            cb(uid, number, user);
+            count++;
+        }
+        p = close + 10;
+        remaining = xml_len - (p - xml);
+    }
+    return count;
+}
+
+// --- phonebook entry building --------------------------------------
+
+bool tr064_number_type_valid(const char *type)
+{
+    if (!type) return false;
+    static const char *const accepted[] = {
+        "home", "mobile", "work", "fax_home", "fax_work", NULL
+    };
+    for (int i = 0; accepted[i]; i++) {
+        if (strcmp(type, accepted[i]) == 0) return true;
+    }
+    return false;
+}
+
+bool tr064_number_plausible(const char *number)
+{
+    if (!number) return false;
+    const char *p = number;
+    if (*p == '+') p++;
+    int digits = 0;
+    for (; *p; p++) {
+        if (*p < '0' || *p > '9') return false;
+        digits++;
+    }
+    return digits >= 3 && digits <= 31;
+}
+
+// Append `s` double-escaped: once for the contact XML, once more for the
+// SOAP argument that carries it. Mapping both levels in one pass avoids a
+// scratch buffer (and the temptation to escape twice by chaining
+// tr064_xml_escape, where the intermediate result would need its own cap).
+static void append_escaped_twice(strbuf_t *sb, const char *s)
+{
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '&':  sb_appendf(sb, "%s", "&amp;amp;");  break;
+            case '<':  sb_appendf(sb, "%s", "&amp;lt;");   break;
+            case '>':  sb_appendf(sb, "%s", "&amp;gt;");   break;
+            case '"':  sb_appendf(sb, "%s", "&amp;quot;"); break;
+            case '\'': sb_appendf(sb, "%s", "&amp;apos;"); break;
+            default:   sb_appendf(sb, "%c", *p);           break;
+        }
+    }
+}
+
+bool tr064_build_contact_arg(char *out, size_t cap,
+                             const char *name, const char *number,
+                             const char *type, bool vip)
+{
+    if (!out || cap == 0) return false;
+    out[0] = '\0';
+    if (!name || !*name) return false;
+    if (!tr064_number_plausible(number)) return false;
+    if (!tr064_number_type_valid(type)) return false;
+    if (strlen(name) >= TR064_CONTACT_NAME_CAP) return false;
+
+    // The literals are written pre-escaped rather than built plain and
+    // escaped afterwards: that keeps the whole document in one bounded
+    // builder, so sb.truncated is the single all-or-nothing check.
+    strbuf_t sb = sb_init(out, (int)cap);
+    sb_appendf(&sb, "%s", "&lt;?xml version=&quot;1.0&quot; "
+                          "encoding=&quot;utf-8&quot;?&gt;"
+                          "&lt;Envelope&gt;&lt;contact&gt;"
+                          "&lt;category&gt;");
+    sb_appendf(&sb, "%d", vip ? 1 : 0);
+    sb_appendf(&sb, "%s", "&lt;/category&gt;"
+                          "&lt;person&gt;&lt;realName&gt;");
+    append_escaped_twice(&sb, name);
+    sb_appendf(&sb, "%s", "&lt;/realName&gt;&lt;/person&gt;"
+                          "&lt;telephony&gt;&lt;number type=&quot;");
+    sb_appendf(&sb, "%s", type);
+    sb_appendf(&sb, "%s", "&quot; prio=&quot;1&quot; id=&quot;0&quot;&gt;");
+    sb_appendf(&sb, "%s", number);
+    sb_appendf(&sb, "%s", "&lt;/number&gt;&lt;/telephony&gt;"
+                          "&lt;/contact&gt;&lt;/Envelope&gt;");
+
+    if (sb.truncated) {
+        out[0] = '\0';
+        return false;
+    }
+    return true;
+}

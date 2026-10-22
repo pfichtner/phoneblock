@@ -1,0 +1,3585 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/ab-logo-bot.svg">
+<title>PhoneBlock Dongle</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+       margin:0;background:#f5f5f7;color:#222;line-height:1.45}
+  header{background:#008f7a;color:#fff;padding:.8rem 1rem;
+         display:flex;align-items:center;gap:.6rem}
+  header img{display:block;width:32px;height:32px}
+  header h1{margin:0;font-size:1.25rem;font-weight:600;flex:1}
+  header a{color:#cdeee7;text-decoration:none;font-size:.9rem}
+  header a:hover{color:#fff}
+  main{max-width:900px;margin:0 auto;padding:1rem}
+  section{background:#fff;border-radius:8px;padding:1rem;margin-bottom:1rem;
+          box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  h2{margin:0 0 .6rem;font-size:.85rem;color:#555;text-transform:uppercase;
+     letter-spacing:.6px;font-weight:600;border-bottom:1px solid #eee;
+     padding-bottom:.4rem}
+  /* Collapsible admin/config card: same look as a section, with the
+     title as a clickable summary. Collapsed = compact (no underline);
+     open = h2-style header with the bottom rule. */
+  details.adminsec{background:#fff;border-radius:8px;padding:1rem;
+     margin-bottom:1rem;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  details.adminsec>summary{margin:0;font-size:.85rem;color:#555;
+     text-transform:uppercase;letter-spacing:.6px;font-weight:600;
+     cursor:pointer;list-style:none;display:flex;align-items:center;gap:.5rem}
+  details.adminsec>summary::-webkit-details-marker{display:none}
+  details.adminsec>summary::before{content:'\25B8';color:#aaa;font-size:.9rem}
+  details.adminsec[open]>summary{border-bottom:1px solid #eee;
+     padding-bottom:.4rem;margin-bottom:.6rem}
+  details.adminsec[open]>summary::before{content:'\25BE'}
+  h3{margin:1rem 0 .4rem;font-size:1rem;font-weight:600;color:#222}
+  .pill{display:inline-block;padding:.15rem .6rem;border-radius:999px;
+        font-size:.85rem;font-weight:600}
+  .ok{background:#d4edda;color:#155724}
+  .bad{background:#f8d7da;color:#721c24}
+  .warn{background:#fff3cd;color:#856404}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.5rem}
+  .stat{padding:.6rem;background:#fafafa;border-radius:4px;text-align:center}
+  .stat-label{font-size:.75rem;color:#666;text-transform:uppercase;letter-spacing:.3px}
+  .stat-value{font-size:1.6rem;font-weight:600;color:#008f7a;line-height:1.2}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  td,th{padding:.4rem .5rem;text-align:left;border-bottom:1px solid #eee}
+  th{font-weight:600;color:#666;font-size:.75rem;text-transform:uppercase;letter-spacing:.3px}
+  .v-SPAM{color:#d93025;font-weight:600}
+  .v-LEGITIMATE{color:#188038}
+  .v-SUSPECT{color:#e8710a;font-weight:500}
+  .v-UNKNOWN{color:#888}
+  .v-ERROR{color:#e8710a}
+  .muted{color:#888;font-size:.85rem}
+  .i18n-bubble{margin:.7rem 0 0;padding:.55rem .9rem;border-radius:.7rem;
+    background:#e67e22;color:#fff;font-size:.9rem;font-weight:600;
+    box-shadow:0 1px 4px rgba(0,0,0,.15)}
+  .error-row{border-left:3px solid #f44336;padding:.2rem .5rem;margin-bottom:.35rem;
+             font-size:.9rem;background:#fffafa}
+  .login-error{color:#d93025;background:#fce8e6;border-left:3px solid #d93025;
+               padding:.6rem .8rem;border-radius:4px;margin:.4rem 0 1rem}
+  label{display:block;margin:.6rem 0 .2rem;font-size:.8rem;color:#555}
+  input, select{width:100%;padding:.4rem;border:1px solid #ccc;border-radius:4px;
+        font-size:.95rem;font-family:inherit}
+  input:read-only{background:#fafafa;color:#555}
+  .btn-primary{background:#008f7a;color:#fff;border:0;padding:.55rem 1.2rem;
+               border-radius:4px;font-size:1rem;cursor:pointer;font-family:inherit;
+               text-decoration:none;display:inline-block}
+  .btn-primary:disabled{background:#aaa;cursor:wait}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;
+    align-items:center;justify-content:center;padding:1rem;z-index:50}
+  .modal>div{background:#fff;border-radius:8px;padding:1.2rem;max-width:24rem;
+    width:100%;box-shadow:0 4px 24px rgba(0,0,0,.2)}
+  .modal h3{margin:0 0 .6rem;font-size:1rem}
+  /* Row actions in the call list. Labelled pills, not bare glyphs: a "+"
+     alone does not say what it adds, and the spam vote next to it is
+     public and irreversible — both need to read unambiguously. */
+  .rowbtn{display:inline-flex;align-items:center;gap:.2rem;background:#fff;
+    border:1px solid #008f7a;color:#008f7a;border-radius:999px;
+    padding:.1rem .5rem;font-size:.72rem;line-height:1.5;cursor:pointer;
+    width:auto;margin:0;white-space:nowrap;text-transform:none;
+    letter-spacing:0;font-weight:500}
+  .rowbtn:hover{background:#e6f5f2}
+  .rowbtn.spam{border-color:#d93025;color:#d93025}
+  .rowbtn.spam:hover{background:#fdecea}
+  .rowbtn[disabled]{opacity:.5;cursor:default}
+  .btn-ghost{background:#fff;color:#008f7a;border:1px solid #008f7a;
+             padding:.55rem 1.2rem;border-radius:4px;font-size:1rem;
+             cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+  .hero{background:linear-gradient(135deg,#008f7a,#00b894);color:#fff;
+        border-radius:8px;padding:1.5rem;margin-bottom:1rem}
+  .hero h2{color:#fff;border-bottom:1px solid rgba(255,255,255,.3)}
+  .hero p{margin:.4rem 0}
+  .hero .btn-primary{background:#fff;color:#008f7a;margin-top:.4rem}
+  .hero-step{display:flex;align-items:center;gap:.8rem;
+             padding:.8rem 1rem;margin-top:.8rem;
+             background:rgba(255,255,255,.12);border-radius:6px}
+  .hero-step .mark{display:flex;align-items:center;justify-content:center;
+                   width:1.8rem;height:1.8rem;flex-shrink:0;
+                   border-radius:50%;font-weight:700;font-size:1rem;
+                   background:rgba(255,255,255,.18);color:#fff}
+  .hero-step.done .mark{background:#fff;color:#008f7a}
+  .hero-step .body{flex:1;min-width:0}
+  .hero-step .body strong{display:block;font-size:1rem}
+  .choice{display:block;padding:1rem;background:#fafafa;border:1px solid #e0e0e0;
+          border-radius:6px;margin-bottom:.6rem;text-decoration:none;color:inherit}
+  .choice:hover{border-color:#008f7a;background:#f0f9f6}
+  .choice strong{color:#008f7a;display:block;margin-bottom:.2rem}
+  .cta-row{margin:.4rem 0 .2rem}
+  .status-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+              margin:.4rem 0}
+  .status-row .pill{min-width:10rem;text-align:center}
+  footer{text-align:center;color:#888;font-size:.8rem;padding:1rem}
+  footer a{color:#888}
+  .crumb{font-size:.85rem;color:#888;margin-bottom:.4rem}
+  .crumb a{color:#008f7a;text-decoration:none}
+  .crumb a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <img src="/ab-logo-bot.svg" alt="" width="32" height="32">
+  <h1>PhoneBlock Dongle</h1>
+  <a href="#/" id="homeLink"></a>
+</header>
+<main id="app"></main>
+<footer>
+  PhoneBlock Dongle · <a href="https://phoneblock.net">phoneblock.net</a> ·
+  <select id="langSelect" style="font-size:.8rem;border:none;background:transparent;color:#888">
+    <option value="de">Deutsch</option>
+    <option value="en">English</option>
+    <option value="fr">Français</option>
+    <option value="es">Español</option>
+    <option value="it">Italiano</option>
+    <option value="nl">Nederlands</option>
+    <option value="pl">Polski</option>
+    <option value="sv">Svenska</option>
+    <option value="da">Dansk</option>
+    <option value="nb">Norsk bokmål</option>
+    <option value="uk">Українська</option>
+    <option value="el">Ελληνικά</option>
+    <option value="ar">العربية</option>
+    <option value="zh">中文</option>
+  </select>
+</footer>
+
+<script>
+// --- i18n -----------------------------------------------------------
+
+const I18N = {};
+
+// The UI language is the device's ui_lang. All strings are loaded at runtime
+// from the dongle (/api/i18n/ui); nothing is baked into this page. The device
+// serves the active locale's pack, or the embedded English pack as a fallback,
+// so t() falls back to the English pack (always present) then to the key.
+let LANG = 'en';   // the device's ui_lang, filled in from /api/status on boot
+const t = (k, p) => {
+  // (… || {}) so a locale still loading can't throw.
+  let s = (I18N[LANG] || {})[k];
+  if (s === undefined) s = (I18N.en || {})[k];
+  if (s === undefined) return k;
+  if (p) for (const [name, val] of Object.entries(p))
+    s = s.replaceAll('{' + name + '}', val);
+  return s;
+};
+
+// The UI language is a DEVICE setting (ui_lang — it also drives the status
+// mail and the answer-bot announcement). NOTHING is baked into this page: the
+// dongle serves the strings for its ui_lang from /api/i18n/ui (same-origin) —
+// either the locale pack the firmware downloaded to SPIFFS, or the baked-in
+// English fallback (from i18n/l10n/ui/ui_en.arb) when that locale isn't
+// available yet. So a configured dongle needs no CDN at runtime (issue #460).
+//
+// Each served pack carries "@@locale"; while a just-selected locale is still
+// downloading (or offline), the device serves the English fallback
+// (@@locale:"en"), a readable placeholder — we keep polling until it serves
+// the real locale. German is a normal downloaded locale (no special-casing).
+function storePack(reqLang, dict){
+  if (!dict || typeof dict !== 'object') return null;
+  const loc = dict['@@locale'] || reqLang;
+  I18N[loc] = dict;        // under the actual served locale (populates en too)
+  I18N[reqLang] = dict;    // and under what was asked, so t(LANG) resolves
+  return loc;
+}
+// Switching language is not instant: the device downloads the new pack (UI +
+// mail + audio, several seconds) before /api/i18n/ui serves it. Without feedback
+// a user picks a language and "nothing happens". Show a prominent bubble below
+// the PhoneBlock token display — orange "loading" while we poll, which simply
+// DISAPPEARS once the real pack renders (no "OK" noise), or a red note if it
+// never arrives (the page then stays on the embedded English pack). The text
+// resolves via t()'s English fallback, so it is readable even before the chosen
+// locale's pack exists.
+//
+// The state is global so it survives a route()/renderStatus rebuild: the bubble
+// element is recreated by renderStatus, which then calls applyLangStatus() to
+// restore the current state.
+let g_i18nStatus = '';   // '' | 'loading' | 'unavailable'
+function setLangStatus(kind){ g_i18nStatus = kind || ''; applyLangStatus(); }
+
+// The device's view of the localized-asset download (status.i18n), refreshed by
+// every /api/status poll. The page asks it whether a pack is still coming
+// instead of inferring that from /api/i18n/ui serving the English fallback —
+// which is indistinguishable from "it will never come" and used to cost a
+// 60-second poll on every page load.
+let g_i18nState = null;
+function noteI18nState(st){ if (st) g_i18nState = st; }
+// True while the device could still produce a pack for `lang`: it has never
+// synced, a pass is in flight, or the last pass was about a different locale
+// (a switch was just requested — the trigger runs on the scheduler task, so
+// `running` is briefly still false). Unknown state (no status yet) counts as
+// "wait": better a short orange bubble than a wrong red one.
+function i18nPackPending(lang){
+  const st = g_i18nState;
+  if (!st) return true;
+  if (st.have_ui_pack) return true;      // present; the next fetch serves it
+  return !st.ever_ran || !!st.running || st.sync_lang !== lang;
+}
+function applyLangStatus(){
+  const el = document.getElementById('langStatus');   // only on the status page
+  if (!el) return;
+  if (!g_i18nStatus) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.textContent = g_i18nStatus === 'loading' ? t('i18n.loading') : t('i18n.unavailable');
+  el.style.background = g_i18nStatus === 'loading' ? '#e67e22' : '#c0392b';
+  el.style.display = '';
+}
+function loadUiPack(lang){
+  if (!lang) return Promise.resolve();
+  return fetch('/api/i18n/ui')
+    .then(r => r.ok ? r.json() : null)
+    .then(dict => { storePack(lang, dict); })
+    .catch(() => { /* device unreachable → keys via t(); page is from it */ });
+}
+// The locales the device can serve = the selector's options (single source,
+// no duplicated list).
+function supportedLangs(){
+  const sel = document.getElementById('langSelect');
+  return sel ? Array.from(sel.options).map(o => o.value) : ['en'];
+}
+
+// --- country / dial prefix ------------------------------------------
+// ISO 3166-1 alpha-2 → E.164 country calling code, generated from the
+// server's location/country-codes.csv. Packed as one string because 246
+// entries as object literals would be several KB of flash for no gain.
+// Country *names* are deliberately absent: Intl.DisplayNames renders them
+// in the active UI language, so adding a locale costs nothing here.
+const COUNTRY_DIAL =
+  'AD+376 AE+971 AF+93 AG+1 AI+1 AL+355 AM+374 AO+244 AQ+672 AR+54 AS+1 AT+43 AU+61 AW+297 ' +
+  'AX+358 AZ+994 BA+387 BB+1 BD+880 BE+32 BF+226 BG+359 BH+973 BI+257 BJ+229 BL+590 BM+1 BN+673 ' +
+  'BO+591 BQ+599 BR+55 BS+1 BT+975 BV+47 BW+267 BY+375 BZ+501 CA+1 CC+61 CD+243 CF+236 CG+242 ' +
+  'CH+41 CI+225 CK+682 CL+56 CM+237 CN+86 CO+57 CR+506 CU+53 CV+238 CW+599 CX+61 CY+357 CZ+420 ' +
+  'DE+49 DJ+253 DK+45 DM+1 DO+1 DZ+213 EC+593 EE+372 EG+20 EH+212 ER+291 ES+34 ET+251 FI+358 ' +
+  'FJ+679 FK+500 FM+691 FO+298 FR+33 GA+241 GB+44 GD+1 GE+995 GF+594 GG+44 GH+233 GI+350 GL+299 ' +
+  'GM+220 GN+224 GP+590 GQ+240 GR+30 GS+500 GT+502 GU+1 GW+245 GY+592 HK+852 HM+672 HN+504 ' +
+  'HR+385 HT+509 HU+36 ID+62 IE+353 IL+972 IM+44 IN+91 IO+246 IQ+964 IR+98 IS+354 IT+39 JE+44 ' +
+  'JM+1 JO+962 JP+81 KE+254 KG+996 KH+855 KI+686 KM+269 KN+1 KP+850 KR+82 KW+965 KY+1 KZ+7 ' +
+  'LA+856 LB+961 LC+1 LI+423 LK+94 LR+231 LS+266 LT+370 LU+352 LV+371 LY+218 MA+212 MC+377 ' +
+  'MD+373 ME+382 MF+590 MG+261 MH+692 MK+389 ML+223 MM+95 MN+976 MO+853 MP+1 MQ+596 MR+222 MS+1 ' +
+  'MT+356 MU+230 MV+960 MW+265 MX+52 MY+60 MZ+258 NA+264 NC+687 NE+227 NF+672 NG+234 NI+505 ' +
+  'NL+31 NO+47 NP+977 NR+674 NU+683 NZ+64 OM+968 PA+507 PE+51 PF+689 PG+675 PH+63 PK+92 PL+48 ' +
+  'PM+508 PN+870 PR+1 PS+970 PT+351 PW+680 PY+595 QA+974 RE+262 RO+40 RU+7 RW+250 SA+966 SB+677 ' +
+  'SC+248 SD+249 SE+46 SG+65 SI+386 SJ+47 SK+421 SL+232 SM+378 SN+221 SO+252 SR+597 SS+211 ' +
+  'ST+239 SV+503 SX+1 SY+963 SZ+268 TC+1 TD+235 TF+262 TG+228 TH+66 TJ+992 TK+690 TL+670 TM+993 ' +
+  'TN+216 TO+676 TR+90 TT+1 TV+688 TW+886 TZ+255 UA+380 UG+256 US+1 UY+598 UZ+998 VA+39 VC+1 ' +
+  'VE+58 VG+1 VI+1 VN+84 VU+678 WF+681 WS+685 YE+967 YT+262 ZA+27 ZM+260 ZW+263';
+
+// The dial prefix the device is on, mirrored from /api/status so the poll
+// does not fight the selector while the user is changing it.
+let DIAL_PREFIX = '+49';
+
+// [{iso, dial, name}] sorted by localized country name. Falls back to the
+// bare ISO code on browsers without Intl.DisplayNames.
+function countryOptions(){
+  let names = null;
+  try { names = new Intl.DisplayNames([LANG, 'en'], {type: 'region'}); } catch (_){}
+  const list = COUNTRY_DIAL.split(' ').map(tok => {
+    const i = tok.indexOf('+');
+    const iso = tok.slice(0, i);
+    let name = iso;
+    if (names){ try { name = names.of(iso) || iso; } catch (_){} }
+    return {iso: iso, dial: tok.slice(i), name: name};
+  });
+  try { list.sort((a, b) => a.name.localeCompare(b.name, LANG)); }
+  catch (_){ list.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)); }
+  return list;
+}
+
+// Many countries share a dial prefix (+1 spans all of NANP, +44 the UK and
+// the Crown dependencies), and the device stores only the prefix — so it
+// cannot say *which* one was picked. Remember the ISO code locally so the
+// selector shows the country this browser chose rather than whichever one
+// happens to sort first among its prefix-mates.
+function rememberCountry(iso){
+  try { localStorage.setItem('pb_country', iso); } catch (_){}
+}
+function preferredCountry(){
+  try { return localStorage.getItem('pb_country') || ''; } catch (_){ return ''; }
+}
+
+// Select the option carrying `dial`, preferring the country this browser
+// last picked when several share the prefix (see rememberCountry).
+function selectDial(sel, dial){
+  const pref = preferredCountry();
+  let fallback = -1;
+  for (let i = 0; i < sel.options.length; i++){
+    const o = sel.options[i];
+    if (o.value !== dial) continue;
+    if (o.dataset.iso === pref){ sel.selectedIndex = i; return; }
+    if (fallback < 0) fallback = i;
+  }
+  if (fallback >= 0) sel.selectedIndex = fallback;
+}
+
+// Populate the region section's two selectors. Cheap to call repeatedly:
+// the language list is copied once from the footer selector (still the
+// single source of the supported locales), and the country list is rebuilt
+// only when the UI language changed, since its labels are localized.
+function fillRegionSelectors(){
+  const langSel = document.getElementById('regionLang');
+  const cSel    = document.getElementById('regionCountry');
+  if (!langSel || !cSel) return;
+  if (!langSel.options.length){
+    const src = document.getElementById('langSelect');
+    if (src) langSel.innerHTML = src.innerHTML;
+    langSel.value = LANG;
+    langSel.addEventListener('change', () => setUiLang(langSel.value));
+  }
+  if (cSel.dataset.lang !== LANG){
+    const keep = cSel.value || DIAL_PREFIX;
+    cSel.innerHTML = '';
+    for (const c of countryOptions()){
+      const o = document.createElement('option');
+      o.value = c.dial;
+      o.textContent = c.name + ' (' + c.dial + ')';
+      o.dataset.iso = c.iso;
+      cSel.appendChild(o);
+    }
+    cSel.dataset.lang = LANG;
+    selectDial(cSel, keep);
+  }
+  if (!cSel.dataset.wired){
+    cSel.dataset.wired = '1';
+    cSel.addEventListener('change', () => {
+      const opt = cSel.selectedOptions[0];
+      if (opt) rememberCountry(opt.dataset.iso);
+      setDialPrefix(cSel.value);
+    });
+  }
+}
+
+// Reflect the device's country/language in the selectors on every poll,
+// but never while the user has one open — that would snap their choice
+// back before the POST lands.
+function syncRegionSelectors(s){
+  if (s && typeof s.dial_prefix === 'string' && s.dial_prefix){
+    DIAL_PREFIX = s.dial_prefix;
+  }
+  fillRegionSelectors();
+  const cSel    = document.getElementById('regionCountry');
+  const langSel = document.getElementById('regionLang');
+  if (cSel    && document.activeElement !== cSel)    selectDial(cSel, DIAL_PREFIX);
+  if (langSel && document.activeElement !== langSel) langSel.value = LANG;
+}
+
+// Persist the country on the device. Only the prefix travels — that is
+// what normalize_e164() needs; which of the countries sharing it the user
+// picked stays a local display detail.
+function setDialPrefix(dial){
+  DIAL_PREFIX = dial;
+  try {
+    fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({ dial_prefix: dial }).toString(),
+    }).catch(() => {});
+  } catch (_){}
+}
+// Best supported match for the browser's preferred languages, or null. Matches
+// exact ("en") then primary subtag ("en-US" -> "en"); folds the Norwegian
+// variants (nn/no) onto nb, which is the one locale whose code isn't just the
+// primary subtag of what a browser typically reports.
+function pickBrowserLang(){
+  const sup = supportedLangs();
+  const prefs = (typeof navigator !== 'undefined' &&
+                 (navigator.languages || [navigator.language])) || [];
+  for (let raw of prefs){
+    if (!raw) continue;
+    const l = String(raw).toLowerCase();
+    const primary = l.split('-')[0];
+    if (sup.includes(l)) return l;
+    if (sup.includes(primary)) return primary;
+    if ((primary === 'no' || primary === 'nn') && sup.includes('nb')) return 'nb';
+  }
+  return null;
+}
+// Read the device's ui_lang from /api/status, reflect it in the selector, load
+// its UI pack, and (if only the fallback was served) poll until the real
+// locale pack downloads. On FIRST contact (the device still on its "en"
+// default, ui_lang_set === false) adopt the browser's preferred supported
+// language and persist it — this also localizes the status mail and the
+// announcement — without overriding a real user choice on later visits.
+function loadDeviceLang(){
+  return fetch('/api/status').then(r => r.ok ? r.json() : null).then(d => {
+    noteI18nState(d && d.i18n);
+    LANG = (d && d.ui_lang) ? String(d.ui_lang) : 'en';
+    if (d && d.ui_lang_set === false){
+      const auto = pickBrowserLang();
+      if (auto && auto !== LANG){
+        LANG = auto;
+        try {
+          fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({ ui_lang: auto }).toString(),
+          }).catch(() => {});   // device adopts it + starts downloading the pack
+        } catch (_){}
+      }
+    }
+    document.documentElement.lang = LANG;
+    const sel = document.getElementById('langSelect');
+    if (sel) sel.value = LANG;
+    return loadUiPack(LANG).then(() => awaitUiPack(LANG));
+  }).catch(() => {});
+}
+// The firmware downloads the active locale's pack; the device serves the
+// English fallback meanwhile. Poll until it serves the real locale
+// (@@locale === lang), then re-render. Bounded so it can't spin forever.
+// (en is the embedded fallback → already "real", so it stops immediately.)
+function awaitUiPack(lang, tries){
+  tries = tries || 0;
+  if (LANG !== lang) return;                          // user switched again
+  if (I18N[lang] && I18N[lang]['@@locale'] === lang) { setLangStatus(''); return; }
+  // The device says no pack is coming for this locale — say so at once instead
+  // of polling. Re-checked on every tick, so a download that fails mid-poll
+  // also stops here rather than running the bound out.
+  if (!i18nPackPending(lang)) { setLangStatus('unavailable'); return; }
+  if (tries > 30) { setLangStatus('unavailable'); return; }  // gave up polling
+  setLangStatus('loading');
+  setTimeout(() => {
+    if (LANG !== lang) return;
+    fetch('/api/i18n/ui').then(r => r.ok ? r.json() : null).then(dict => {
+      if (LANG !== lang) return;
+      if (storePack(lang, dict) === lang) { setLangStatus(''); route(); }
+      else awaitUiPack(lang, tries + 1);
+    }).catch(() => awaitUiPack(lang, tries + 1));
+  }, 2000);
+}
+
+// --- helpers --------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+
+function esc(s){
+  if (s === null || s === undefined || s === '') return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;');
+}
+
+// Render the firmware version as a link to its release notes on GitHub.
+// A clean release (1.3.4) or a pre-release (1.3.4-rc1) links to the
+// suffix-stripped base — so an rc points at the upcoming X.Y.Z notes
+// (which release.sh requires to exist). A git-describe dev build
+// ("1.3.4-5-gabcdef", note the second hyphen) and the "–" placeholder
+// stay plain text. Returns an HTML fragment, so the caller must assign
+// it via innerHTML (with the other fields escaped).
+function fwLink(v){
+  v = v || '–';
+  const m = v.match(/^(\d+\.\d+\.\d+)(?:-[0-9A-Za-z.]+)?$/);
+  if (!m) return esc(v);
+  const url = 'https://github.com/haumacher/phoneblock/blob/master/'
+            + 'phoneblock-dongle/firmware/release-notes/' + m[1] + '.md';
+  return '<a href="' + esc(url) + '" target="_blank" rel="noopener">'
+       + esc(v) + '</a>';
+}
+
+function fmtSec(s){
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.round(s/60) + ' min';
+  if (s < 86400) return Math.round(s/3600) + ' h';
+  return Math.round(s/86400) + ' T';
+}
+
+// Absolute point in time for an event the dongle reported as `ageS`
+// seconds old. We reconstruct the instant from the *browser's* own wall
+// clock (now - age) rather than the device clock: the browser always has
+// an accurate time and the correct local zone, so the rendering works
+// even before the dongle's SNTP sync and never disagrees with the user's
+// own "today"/"yesterday". `withSeconds` adds second precision for the
+// fine-grained log; the call list stays at minute precision.
+function fmtClock(ageS, withSeconds){
+  const locale = (typeof navigator !== 'undefined' && navigator.language) || LANG;
+  const d = new Date(Date.now() - Math.max(0, ageS) * 1000);
+  const time = d.toLocaleTimeString(locale, withSeconds
+    ? {hour: '2-digit', minute: '2-digit', second: '2-digit'}
+    : {hour: '2-digit', minute: '2-digit'});
+  const midnight = x => { const c = new Date(x); c.setHours(0, 0, 0, 0); return c.getTime(); };
+  const today = midnight(Date.now());
+  const day   = midnight(d);
+  if (day === today)             return t('status.time.today',     {time});
+  if (day === today - 86400000)  return t('status.time.yesterday', {time});
+  return d.toLocaleDateString(locale, {day: 'numeric', month: 'numeric'}) + ' ' + time;
+}
+
+async function fetchJson(url){
+  try { const r = await fetch(url); return r.ok ? r.json() : null; }
+  catch(e){ return null; }
+}
+
+// --- timezone (learn from the browser, push to the dongle) ----------
+// The dongle's newlib has no IANA database, so it needs a POSIX TZ string
+// ("CET-1CEST,M3.5.0,M10.5.0/3"), not "Europe/Berlin". Curated strings for
+// the zones we serve give a canonical result for the European majority
+// (matching the firmware default exactly → no spurious "change?" button);
+// browserPosixTZ() derives one from the browser's own DST rules otherwise.
+const CET = 'CET-1CEST,M3.5.0,M10.5.0/3';
+const EET = 'EET-2EEST,M3.5.0/3,M10.5.0/4';
+const BST = 'GMT0BST,M3.5.0/1,M10.5.0';
+const TZ_TABLE = {
+  'Europe/Berlin':CET,'Europe/Vienna':CET,'Europe/Zurich':CET,'Europe/Paris':CET,
+  'Europe/Madrid':CET,'Europe/Rome':CET,'Europe/Amsterdam':CET,'Europe/Brussels':CET,
+  'Europe/Luxembourg':CET,'Europe/Warsaw':CET,'Europe/Prague':CET,'Europe/Budapest':CET,
+  'Europe/Copenhagen':CET,'Europe/Stockholm':CET,'Europe/Oslo':CET,'Europe/Belgrade':CET,
+  'Europe/Ljubljana':CET,'Europe/Bratislava':CET,'Europe/Zagreb':CET,'Europe/Sarajevo':CET,
+  'Europe/London':BST,'Europe/Dublin':BST,'Europe/Lisbon':'WET0WEST,M3.5.0/1,M10.5.0',
+  'Europe/Athens':EET,'Europe/Helsinki':EET,'Europe/Bucharest':EET,'Europe/Kiev':EET,
+  'Europe/Kyiv':EET,'Europe/Riga':EET,'Europe/Sofia':EET,'Europe/Tallinn':EET,'Europe/Vilnius':EET,
+  'Europe/Moscow':'MSK-3','Europe/Istanbul':'<+03>-3','UTC':'UTC0','Etc/UTC':'UTC0',
+};
+
+function detectZone(){
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; }
+  catch(_){ return ''; }
+}
+
+function browserPosixTZ(){
+  const z = detectZone();
+  if (TZ_TABLE[z]) return TZ_TABLE[z];
+  try {
+    const y = new Date().getFullYear();
+    const offAt = d => -d.getTimezoneOffset();          // minutes east of UTC
+    const jan = offAt(new Date(y,0,1,12)), jul = offAt(new Date(y,6,1,12));
+    const std = Math.min(jan,jul), dst = Math.max(jan,jul);
+    const fmt = mins => {                                // POSIX: west positive
+      const tot = -mins, sign = tot<0?'-':'+', a = Math.abs(tot);
+      const hh = Math.floor(a/60), mm = a%60;
+      return sign + hh + (mm ? ':'+String(mm).padStart(2,'0') : '');
+    };
+    const abbr = m => {
+      try {
+        const p = new Intl.DateTimeFormat('en',{timeZoneName:'short'})
+          .formatToParts(new Date(y,m,1)).find(x=>x.type==='timeZoneName');
+        return p && /^[A-Za-z]{2,5}$/.test(p.value) ? p.value : null;
+      } catch(_){ return null; }
+    };
+    const stdName = abbr(0) || ('<'+fmt(std)+'>');
+    if (std === dst) return stdName + fmt(std);          // no DST
+    const dstName = abbr(6) || ('<'+fmt(dst)+'>');
+    let prev = offAt(new Date(y,0,1,12)); const tr = [];
+    for (let m=0;m<12;m++){
+      const dim = new Date(y,m+1,0).getDate();
+      for (let d=1;d<=dim;d++){
+        const cur = offAt(new Date(y,m,d,12));
+        if (cur !== prev){ tr.push({date:new Date(y,m,d), inc:cur>prev}); prev=cur; }
+      }
+    }
+    const spring = tr.find(x=>x.inc), fall = tr.find(x=>!x.inc);
+    if (!spring || !fall) return null;
+    const rule = dt => {
+      const m = dt.getMonth()+1, dow = dt.getDay(), dom = dt.getDate();
+      const dim = new Date(dt.getFullYear(),m,0).getDate();
+      let wk = Math.ceil(dom/7); if (dom+7 > dim) wk = 5;   // 5 = last
+      return 'M'+m+'.'+wk+'.'+dow;
+    };
+    return stdName+fmt(std)+dstName+fmt(dst)+','+rule(spring.date)+','+rule(fall.date);
+  } catch(_){ return null; }
+}
+
+let g_tzPosix;   // computed once, lazily
+function applyTz(deviceTz){
+  const cur = $('tzCurrent'), btn = $('tzApply');
+  if (!cur || !btn) return;
+  cur.textContent = t('status.tz.current', { tz: deviceTz || '–' });
+  if (g_tzPosix === undefined) g_tzPosix = browserPosixTZ();
+  if (g_tzPosix && deviceTz && g_tzPosix !== deviceTz){
+    btn.style.display = '';
+    btn.textContent = t('status.tz.apply', { zone: detectZone() || g_tzPosix });
+    btn.onclick = async () => {
+      btn.disabled = true;
+      const body = new URLSearchParams();
+      body.append('timezone', g_tzPosix);
+      try {
+        const r = await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+        if (r.ok) cur.textContent = t('status.tz.saved');
+      } catch(_){ /* next poll reconciles */ }
+      btn.disabled = false;
+      refreshAll();   // re-reads the device tz; hides the button once applied
+    };
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+async function postForm(url, form){
+  const body = new URLSearchParams();
+  for (const [k, v] of new FormData(form).entries()) body.append(k, v);
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const d = await r.json().catch(() => ({}));
+    return { ok: r.ok && d.ok, data: d, statusText: r.statusText };
+  } catch (err) {
+    return { ok: false, data: {}, statusText: 'Network error' };
+  }
+}
+
+// --- add caller to the Fritz!Box phonebook ---------------------------
+//
+// A caller the box could not resolve arrives without a display name and
+// shows up nameless in the call list. Writing them into a Fritz!Box
+// phonebook makes the box announce the name on the next call — which also
+// means the dongle stops asking PhoneBlock about them (is_known_contact
+// short-circuits) and, with "log known calls" off, they disappear from the
+// list entirely.
+//
+// Numbers we may offer this for: plain E.164 / national, no internal dial
+// codes (**622, *21#) — the same shape tr064_number_plausible() accepts.
+const PLAIN_NUMBER = /^\+?[0-9]{3,31}$/;
+
+const PB_TYPES = ['home', 'mobile', 'work', 'fax_home', 'fax_work'];
+
+let pbDlgEl = null;      // the dialog, built once and reused
+let pbDlgNumber = '';    // number the open dialog is about
+
+// Fill a <select> with the box's phonebooks. Synced books (CardDAV,
+// Google) are listed but disabled: the box rejects writes to them, and
+// showing them explains why the one the user might look for is missing.
+async function pbLoadBooks(sel, msgEl){
+  sel.innerHTML = '';
+  const r = await fetchJson('/api/phonebooks');
+  if (!r || !r.ok){
+    if (msgEl) pbSetMsg(msgEl, pbErrorText(r), '#d93025');
+    return false;
+  }
+  let writable = 0;
+  for (const b of (r.phonebooks || [])){
+    const o = document.createElement('option');
+    o.value = String(b.id);
+    o.textContent = b.writable ? b.name
+                  : t('pb.dialog.book.readonly', {name: b.name});
+    o.disabled = !b.writable;
+    o.dataset.name = b.name;
+    if (b.writable){
+      writable++;
+      if (String(b.id) === String(r.selected)) o.selected = true;
+    }
+    sel.appendChild(o);
+  }
+  if (!writable){
+    if (msgEl) pbSetMsg(msgEl, t('pb.dialog.none_writable'), '#d93025');
+    return false;
+  }
+  return true;
+}
+
+function pbSetMsg(el, text, colour){
+  el.textContent = text;
+  el.style.color = colour || '#888';
+}
+
+// Map the endpoints' stable `code` to localized text; fall back to the
+// English `message` the firmware sent for codes we don't know.
+function pbErrorText(d){
+  const code = d && d.code;
+  if (code === 'no_fritzbox')   return t('pb.dialog.error.no_fritzbox');
+  if (code === 'not_writable')  return t('pb.dialog.error.not_writable');
+  if (code === 'invalid_name')  return t('pb.dialog.error.name');
+  if (code === 'invalid_number') return t('pb.dialog.error.number');
+  return t('pb.dialog.error.generic',
+           {msg: (d && d.message) || t('pb.dialog.error.unreachable')});
+}
+
+// Built fresh on every open rather than cached: the labels come from t(),
+// and the user can switch UI language between two opens (the rest of the
+// UI re-renders for that, a cached dialog would keep the old language).
+function pbBuildDialog(){
+  if (pbDlgEl) pbDlgEl.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.style.display = 'none';
+  wrap.innerHTML = ''
+    + '<div>'
+    + '<h3>' + esc(t('pb.dialog.title')) + '</h3>'
+    + '<p class="muted">' + esc(t('pb.dialog.intro')) + '</p>'
+    + '<p style="margin:.4rem 0"><strong id="pbDlgNum"></strong></p>'
+    + '<label>' + esc(t('pb.dialog.name'))
+    + '<input type="text" id="pbName" maxlength="47" autocomplete="off"></label>'
+    + '<label>' + esc(t('pb.dialog.type'))
+    + '<select id="pbType">'
+    +   PB_TYPES.map(ty => '<option value="' + ty + '">'
+    +     esc(t('pb.dialog.type.' + ty)) + '</option>').join('')
+    + '</select></label>'
+    + '<label style="display:flex;align-items:center;gap:.5rem;margin:.6rem 0;font-size:.9rem;color:#222">'
+    + '  <input type="checkbox" id="pbVip" style="width:auto;margin:0">'
+    + '  <span>' + esc(t('pb.dialog.vip')) + '</span>'
+    + '</label>'
+    + '<label id="pbBookRow" style="display:none">' + esc(t('pb.dialog.book'))
+    + '<select id="pbBook"></select></label>'
+    + '<p id="pbDlgMsg" class="muted" style="min-height:1em;margin:.4rem 0"></p>'
+    + '<p style="margin:.8rem 0 0;display:flex;gap:.5rem">'
+    + '  <button id="pbSave" class="btn-primary" style="padding:.4rem .9rem">'
+    +   esc(t('pb.dialog.save')) + '</button>'
+    + '  <button id="pbCancel" class="btn-ghost" style="padding:.4rem .9rem">'
+    +   esc(t('pb.dialog.cancel')) + '</button>'
+    + '</p>'
+    + '</div>';
+  document.body.appendChild(wrap);
+  pbDlgEl = wrap;
+
+  $('pbCancel').onclick = () => { wrap.style.display = 'none'; };
+  // Clicking the backdrop cancels; clicks inside the card must not.
+  wrap.onclick = (e) => { if (e.target === wrap) wrap.style.display = 'none'; };
+  $('pbSave').onclick = pbSubmit;
+  return wrap;
+}
+
+function pbOpenAddContact(number){
+  pbBuildDialog();
+  pbDlgNumber = number;
+  $('pbDlgNum').textContent = number;
+  $('pbName').value = '';
+  $('pbVip').checked = false;
+  $('pbType').selectedIndex = 0;
+  $('pbBookRow').style.display = 'none';
+  pbSetMsg($('pbDlgMsg'), '');
+  $('pbSave').disabled = false;
+  pbDlgEl.style.display = 'flex';
+  $('pbName').focus();
+}
+
+async function pbSubmit(){
+  const msg  = $('pbDlgMsg');
+  const save = $('pbSave');
+  const name = $('pbName').value.trim();
+  if (!name){
+    pbSetMsg(msg, t('pb.dialog.error.name'), '#d93025');
+    return;
+  }
+  save.disabled = true;
+  pbSetMsg(msg, t('pb.dialog.working'));
+
+  const body = new URLSearchParams();
+  body.append('number', pbDlgNumber);
+  body.append('name', name);
+  body.append('type', $('pbType').value);
+  body.append('vip', $('pbVip').checked ? '1' : '0');
+  // Only sent when the user actually picked a target: the firmware
+  // persists the selection only for an explicit pick that then worked.
+  const bookRow = $('pbBookRow');
+  const book    = $('pbBook');
+  if (bookRow.style.display !== 'none' && book.value){
+    body.append('phonebook_id', book.value);
+    const opt = book.options[book.selectedIndex];
+    body.append('phonebook_name', (opt && opt.dataset.name) || '');
+  }
+
+  let d = {};
+  let ok = false;
+  try {
+    const r = await fetch('/api/phonebook/add', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    d  = await r.json().catch(() => ({}));
+    ok = r.ok && d.ok;
+  } catch (_){ /* handled as a failure below */ }
+
+  if (ok){
+    pbSetMsg(msg, t('pb.dialog.done'), '#188038');
+    setTimeout(() => { if (pbDlgEl) pbDlgEl.style.display = 'none'; }, 700);
+    await refreshAll();
+    return;
+  }
+  // "No phonebook chosen yet" and "that one is read-only" are both
+  // answered by showing the picker rather than by an error the user can
+  // do nothing with.
+  if (d.code === 'no_phonebook' || d.code === 'not_writable'
+      || d.code === 'phonebook_moved'){
+    bookRow.style.display = '';
+    const loaded = await pbLoadBooks($('pbBook'), msg);
+    if (loaded){
+      const warn = d.code === 'not_writable' || d.code === 'phonebook_moved';
+      pbSetMsg(msg, d.code === 'not_writable' ? t('pb.dialog.error.not_writable')
+                  : d.code === 'phonebook_moved' ? t('pb.dialog.error.moved')
+                  : t('pb.dialog.pick'),
+               warn ? '#d93025' : '#888');
+    }
+    save.disabled = false;
+    return;
+  }
+  pbSetMsg(msg, pbErrorText(d), '#d93025');
+  save.disabled = false;
+}
+
+// Row actions. Each sits in the column it changes — "add contact" in the
+// Name column it fills, "report spam" in the Bewertung column it votes on —
+// so what a button does is readable from where it is, without a legend.
+function pbAddButton(number){
+  return ' <button class="rowbtn" data-pbnum="' + esc(number) + '" title="'
+       + esc(t('status.calls.add_contact.help')) + '">'
+       + '<span aria-hidden="true">&#43;</span> '
+       + esc(t('status.calls.add_contact')) + '</button>';
+}
+
+function pbSpamButton(number){
+  return ' <button class="rowbtn spam" data-spamnum="' + esc(number) + '" title="'
+       + esc(t('status.calls.report_spam.help')) + '">'
+       + '<span aria-hidden="true">&#9888;</span> '
+       + esc(t('status.calls.report_spam')) + '</button>';
+}
+
+function pbWhitelistButton(number){
+  return ' <button class="rowbtn" data-wlnum="' + esc(number) + '" title="'
+       + esc(t('status.calls.whitelist.help')) + '">'
+       + '<span aria-hidden="true">&#10003;</span> '
+       + esc(t('status.calls.whitelist')) + '</button>';
+}
+
+// --- whitelist -------------------------------------------------------
+// Behind a confirmation like the spam vote: the "legitimate" rating is
+// published under the user's account.
+let pbWlDlgEl = null;
+let pbWlNumber = '';
+
+function pbOpenWhitelist(number){
+  if (pbWlDlgEl) pbWlDlgEl.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.innerHTML = ''
+    + '<div>'
+    + '<h3>' + esc(t('whitelist.dialog.title')) + '</h3>'
+    + '<p class="muted">' + esc(t('whitelist.dialog.intro')) + '</p>'
+    + '<p style="margin:.4rem 0"><strong id="pbWlNum"></strong></p>'
+    + '<p id="pbWlMsg" class="muted" style="min-height:1em;margin:.4rem 0"></p>'
+    + '<p style="margin:.8rem 0 0;display:flex;gap:.5rem">'
+    + '  <button id="pbWlSave" class="btn-primary" style="padding:.4rem .9rem">'
+    +   esc(t('whitelist.dialog.submit')) + '</button>'
+    + '  <button id="pbWlCancel" class="btn-ghost" style="padding:.4rem .9rem">'
+    +   esc(t('pb.dialog.cancel')) + '</button>'
+    + '</p></div>';
+  document.body.appendChild(wrap);
+  pbWlDlgEl = wrap;
+  pbWlNumber = number;
+  $('pbWlNum').textContent = number;
+  $('pbWlCancel').onclick = () => { wrap.style.display = 'none'; };
+  wrap.onclick = (e) => { if (e.target === wrap) wrap.style.display = 'none'; };
+  $('pbWlSave').onclick = pbWhitelistSubmit;
+  wrap.style.display = 'flex';
+}
+
+async function pbWhitelistSubmit(){
+  const msg  = $('pbWlMsg');
+  const save = $('pbWlSave');
+  save.disabled = true;
+  pbSetMsg(msg, t('whitelist.dialog.working'));
+
+  const body = new URLSearchParams();
+  body.append('number', pbWlNumber);
+  let d = {};
+  let ok = false;
+  try {
+    const r = await fetch('/api/whitelist', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    d  = await r.json().catch(() => ({}));
+    ok = r.ok && d.ok;
+  } catch (_){ /* handled below */ }
+
+  if (ok){
+    pbSetMsg(msg, t('whitelist.dialog.done'), '#188038');
+    setTimeout(() => { if (pbWlDlgEl) pbWlDlgEl.style.display = 'none'; }, 700);
+    await refreshAll();
+    return;
+  }
+  pbSetMsg(msg, d.code === 'no_token' ? t('spam.dialog.error.no_token')
+              : pbErrorText(d), '#d93025');
+  save.disabled = false;
+}
+
+// --- spam vote -------------------------------------------------------
+// Behind a confirmation on purpose: unlike the phonebook entry (local to
+// the user's box, editable there), a rating is published to the community
+// database under the user's account and cannot be taken back from here.
+let pbSpamDlgEl = null;
+let pbSpamNumber = '';
+
+const PB_RATINGS = ['B_MISSED', 'C_PING', 'D_POLL', 'E_ADVERTISING',
+                    'F_GAMBLE', 'G_FRAUD'];
+
+function pbBuildSpamDialog(){
+  if (pbSpamDlgEl) pbSpamDlgEl.remove();
+  const wrap = document.createElement('div');
+  wrap.className = 'modal';
+  wrap.style.display = 'none';
+  wrap.innerHTML = ''
+    + '<div>'
+    + '<h3>' + esc(t('spam.dialog.title')) + '</h3>'
+    + '<p class="muted">' + esc(t('spam.dialog.intro')) + '</p>'
+    + '<p style="margin:.4rem 0"><strong id="pbSpamNum"></strong></p>'
+    + '<label>' + esc(t('spam.dialog.rating'))
+    + '<select id="pbSpamRating">'
+    +   PB_RATINGS.map(r => '<option value="' + r + '">'
+    +     esc(t('spam.dialog.rating.' + r)) + '</option>').join('')
+    + '</select></label>'
+    + '<label>' + esc(t('spam.dialog.comment'))
+    + ' <span class="muted">' + esc(t('spam.dialog.comment.hint')) + '</span>'
+    + '<textarea id="pbSpamComment" rows="2" maxlength="240"'
+    +   ' style="width:100%;font:inherit"></textarea></label>'
+    + '<p id="pbSpamMsg" class="muted" style="min-height:1em;margin:.4rem 0"></p>'
+    + '<p style="margin:.8rem 0 0;display:flex;gap:.5rem">'
+    + '  <button id="pbSpamSave" class="btn-primary" style="padding:.4rem .9rem">'
+    +   esc(t('spam.dialog.submit')) + '</button>'
+    + '  <button id="pbSpamCancel" class="btn-ghost" style="padding:.4rem .9rem">'
+    +   esc(t('pb.dialog.cancel')) + '</button>'
+    + '</p></div>';
+  document.body.appendChild(wrap);
+  pbSpamDlgEl = wrap;
+  $('pbSpamCancel').onclick = () => { wrap.style.display = 'none'; };
+  wrap.onclick = (e) => { if (e.target === wrap) wrap.style.display = 'none'; };
+  $('pbSpamSave').onclick = pbSpamSubmit;
+  return wrap;
+}
+
+function pbOpenSpamVote(number){
+  pbBuildSpamDialog();
+  pbSpamNumber = number;
+  $('pbSpamNum').textContent = number;
+  $('pbSpamRating').selectedIndex = 0;
+  $('pbSpamComment').value = '';
+  pbSetMsg($('pbSpamMsg'), '');
+  $('pbSpamSave').disabled = false;
+  pbSpamDlgEl.style.display = 'flex';
+}
+
+async function pbSpamSubmit(){
+  const msg  = $('pbSpamMsg');
+  const save = $('pbSpamSave');
+  save.disabled = true;
+  pbSetMsg(msg, t('spam.dialog.working'));
+
+  const body = new URLSearchParams();
+  body.append('number', pbSpamNumber);
+  body.append('rating', $('pbSpamRating').value);
+  // Sent verbatim — the firmware JSON-escapes it (sb_append_json_escaped).
+  const comment = $('pbSpamComment').value.trim();
+  if (comment) body.append('comment', comment);
+
+  let d = {};
+  let ok = false;
+  try {
+    const r = await fetch('/api/rate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    d  = await r.json().catch(() => ({}));
+    ok = r.ok && d.ok;
+  } catch (_){ /* handled below */ }
+
+  if (ok){
+    pbSetMsg(msg, t('spam.dialog.done'), '#188038');
+    setTimeout(() => { if (pbSpamDlgEl) pbSpamDlgEl.style.display = 'none'; }, 700);
+    await refreshAll();
+    return;
+  }
+  pbSetMsg(msg, d.code === 'no_token'   ? t('spam.dialog.error.no_token')
+              : d.code === 'is_contact' ? t('spam.dialog.error.is_contact')
+              : pbErrorText(d), '#d93025');
+  save.disabled = false;
+}
+
+// --- provider presets (PROVIDERS.md) --------------------------------
+
+// Transport is always connection-oriented (TLS or TCP), never UDP: only a
+// persistent connection lets the registrar push an incoming INVITE back
+// through the NAT of a home router. UDP registers fine but cannot receive
+// calls behind a router, so it is useless for the dongle's purpose.
+//
+// `port: 0` means "auto" — the firmware resolves the endpoint via DNS-SRV
+// and uses the port the SRV record advertises. Telekom only publishes an
+// SRV record (_sips._tcp.tel.t-online.de) and no A record on the bare
+// domain, so a hard-coded port would skip SRV and the direct A lookup
+// would fail (#363). `anonymous: true` registers via anonymous@t-online.de
+// with no password — the simplest path for the user, who then only types
+// the phone number.
+const PROVIDERS = {
+  telekom: {
+    name: 'Telekom MagentaZuhause',
+    host: 'tel.t-online.de',
+    port: 0,
+    transport: 'tls',
+    authUser: 'anonymous@t-online.de',
+    anonymous: true,
+    // Telekom's own STUN — lets the dongle advertise its real post-NAT RTP
+    // port in the SDP instead of the unmapped local port.
+    stun: 'stun.t-online.de:3478',
+    userHint: 'Rufnummer im Format +49… (E.164). Kein Passwort nötig — die Anmeldung erfolgt anonym (anonymous@t-online.de).',
+  },
+  einsundeins: {
+    name: '1&1',
+    host: 'sip.1und1.de',
+    port: 5060,
+    transport: 'tcp',
+    stun: 'stun.1und1.de:3478',
+    userHint: 'Format: 49…, ohne „+" und ohne führende 0. Passwort = „Telefoniepasswort" aus dem 1&1-Control-Center.',
+  },
+  sipgate: {
+    name: 'sipgate',
+    host: 'sipgate.de',
+    port: 5060,
+    transport: 'tcp',
+    stun: 'stun.sipgate.net:10000',
+    userHint: 'SIP-ID aus dem sipgate-Webportal. Passwort = separates SIP-Passwort.',
+  },
+  easybell: {
+    name: 'easybell',
+    host: 'voip.easybell.de',
+    port: 5060,
+    transport: 'tcp',
+    // easybell documents that a STUN server is not required; left empty.
+    userHint: 'SIP-Benutzer und -Passwort aus dem easybell-Kundenportal.',
+  },
+};
+
+// --- router ---------------------------------------------------------
+
+const app = $('app');
+let pollTimer = null;
+// True between the click on "Auf Aktualisierung prüfen" and the
+// response from /api/firmware/check. firmware_try_update writes the
+// pessimistic last_failed_ota marker *before* the download starts, so
+// any /api/status poll that lands during the install would otherwise
+// flash up the rollback banner for the version we are actively
+// installing — which is the opposite of what the marker is meant to
+// signal. The flag suppresses that banner while a check is in flight.
+let fwUpdateInFlight = false;
+
+function stopPolling(){
+  if (pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+}
+
+function route(){
+  stopPolling();
+  const hash = location.hash || '#/';
+  const [_, section, subsection] = hash.split('/');
+  const homeLink = $('homeLink');
+  homeLink.textContent = hash === '#/' ? '' : t('back.status');
+  if (section === 'setup' && subsection === 'sip'){
+    const sub = hash.split('/')[3] || '';
+    if (sub === 'fritzbox') return renderSipFritzbox();
+    if (sub === 'provider') return renderSipProvider();
+    if (sub === 'manual')   return renderSipManual();
+    return renderSipEntry();
+  }
+  if (section === 'setup' && subsection === 'token') return renderToken();
+  return renderStatus();
+}
+
+window.addEventListener('hashchange', route);
+
+// --- views: status --------------------------------------------------
+
+function renderStatus(){
+  app.innerHTML = ''
+    + '<section id="loginSection" style="display:none">'
+    + '<h2>' + esc(t('login.title')) + '</h2>'
+    + '<p id="loginError" class="login-error" style="display:none"></p>'
+    + '<p>' + esc(t('login.intro')) + '</p>'
+    + '<label title="' + esc(t('login.remember.help')) + '" '
+    +   'style="display:flex;align-items:center;gap:.4rem;margin:.8rem 0;font-size:.9rem;color:#444">'
+    + '  <input id="loginRemember" type="checkbox" style="width:auto;margin:0">'
+    + '  <span>' + esc(t('login.remember')) + '</span>'
+    + '</label>'
+    + '<p style="margin-top:1.2rem">'
+    + '<a id="loginButton" href="/auth/start" class="btn-primary">'
+    +   esc(t('login.button')) + '</a>'
+    + '</p>'
+    + '</section>'
+    + '<div id="heroSlot"></div>'
+    + '<section id="statusSection" style="display:none">'
+    + '<h2>' + esc(t('status.title')) + '</h2>'
+    + '<div class="status-row">'
+    + '  <span id="sipPill" class="pill bad">…</span>'
+    + '  <span class="muted" id="sipDetail"></span>'
+    + '  <a id="sipCta" href="#/setup/sip" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem"></a>'
+    + '</div>'
+    + '<div class="status-row">'
+    + '  <span id="tokenPill" class="pill bad">…</span>'
+    + '  <span id="tokenMsg" class="muted"></span>'
+    + '  <a id="tokenCta" href="#/setup/token" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem">'
+    +    esc(t('status.token.cta')) + '</a>'
+    + '  <button id="tokenTest" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem">'
+    +    esc(t('status.token.test')) + '</button>'
+    + '  <a id="tokenRenew" href="/register-start" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem">'
+    +    esc(t('status.token.renew')) + '</a>'
+    + '</div>'
+    + '<div id="langStatus" class="i18n-bubble" style="display:none"></div>'
+    + '<div class="grid" style="margin-top:.8rem">'
+    + '  <div class="stat"><div class="stat-label">' + esc(t('status.counters.total'))  + '</div><div class="stat-value" id="cTotal">–</div></div>'
+    + '  <div class="stat"><div class="stat-label">' + esc(t('status.counters.spam'))   + '</div><div class="stat-value" id="cSpam">–</div></div>'
+    + '  <div class="stat"><div class="stat-label">' + esc(t('status.counters.legit')) + '</div><div class="stat-value" id="cLegit">–</div></div>'
+    + '  <div class="stat"><div class="stat-label">' + esc(t('status.counters.errors'))+ '</div><div class="stat-value" id="cErr">–</div></div>'
+    + '</div>'
+    + '<p class="muted" id="statusInfo" style="margin:.6rem 0 0"></p>'
+    + '</section>'
+    + '<section id="callsSection" style="display:none">'
+    + '<h2 style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem">'
+    + '  <span>' + esc(t('status.calls.title')) + '</span>'
+    + '  <span style="display:flex;align-items:center;gap:.8rem">'
+    + '    <label title="' + esc(t('status.calls.log_known.help')) + '" style="font-size:.75rem;font-weight:400;color:#444;display:flex;align-items:center;gap:.3rem">'
+    + '      <input id="callsLogKnown" type="checkbox" style="width:auto;margin:0">'
+    + '      <span>' + esc(t('status.calls.log_known')) + '</span>'
+    + '    </label>'
+    + '    <button id="callsClear" class="btn-ghost" style="display:none;padding:.2rem .6rem;font-size:.75rem;text-transform:none;letter-spacing:0">'
+    +      esc(t('status.calls.clear')) + '</button>'
+    + '  </span>'
+    + '</h2>'
+    + '<table><thead><tr>'
+    + '<th>' + esc(t('status.calls.col.when'))    + '</th>'
+    + '<th>' + esc(t('status.calls.col.number'))  + '</th>'
+    + '<th>' + esc(t('status.calls.col.name'))    + '</th>'
+    + '<th>' + esc(t('status.calls.col.verdict')) + '</th>'
+    + '</tr></thead><tbody id="callsBody"></tbody></table>'
+    + '</section>'
+    // Language + country. A collapsible card like the admin sections below,
+    // but unlike them it is *not* hidden while setup is incomplete: the
+    // country decides how a caller ID in national form is expanded to E.164,
+    // and a wrong one makes every lookup miss silently (issue #505), so it
+    // has to stay reachable before SIP and the token are done.
+    + '<details id="regionSection" class="adminsec">'
+    + '<summary>' + esc(t('region.title')) + '</summary>'
+    + '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">'
+    + '<label style="display:flex;flex-direction:column;gap:.2rem">'
+    + '  <span style="font-size:.85rem">' + esc(t('region.lang')) + '</span>'
+    + '  <select id="regionLang" style="min-width:12rem"></select>'
+    + '</label>'
+    + '<label style="display:flex;flex-direction:column;gap:.2rem">'
+    + '  <span style="font-size:.85rem">' + esc(t('region.country')) + '</span>'
+    + '  <select id="regionCountry" style="min-width:14rem"></select>'
+    + '</label>'
+    + '</div>'
+    + '<p class="muted" style="font-size:.72rem;margin:.5rem 0 0">'
+    +   esc(t('region.country.hint')) + '</p>'
+    + '</details>'
+    // Admin/config areas as collapsible cards. Status + recent calls
+    // above stay always-open (the "is it working" view); everything here
+    // is configure-once, so it ships collapsed — the log included: it
+    // surfaces transient, self-healing errors that alarm users who open
+    // it by reflex, so it stays closed until someone goes looking.
+    + '<details id="errorsSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.errors.title')) + '</summary>'
+    + '<p class="muted" style="font-size:.72rem;margin:.2rem 0 .6rem">'
+    +   esc(t('status.errors.note')) + '</p>'
+    + '<div id="errorsList"></div>'
+    + '<p style="margin-top:.6rem">'
+    + '  <button id="errorsClear" class="btn-ghost" style="display:none;padding:.2rem .6rem;font-size:.75rem;text-transform:none;letter-spacing:0">'
+    +    esc(t('status.errors.clear')) + '</button>'
+    + '</p>'
+    + '<label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;margin-top:.7rem;font-size:.85rem">'
+    +   '<input type="checkbox" id="logInfoChk" style="width:auto">'
+    +   '<span>' + esc(t('status.errors.capture_info')) + '</span></label>'
+    + '<p class="muted" style="font-size:.72rem;margin:.2rem 0 0">'
+    +   esc(t('status.errors.capture_info.hint')) + '</p>'
+    + '</details>'
+    + '<details id="systemSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.system.title')) + '</summary>'
+    + '<p id="systemHeap" class="muted" style="font-size:.85rem;margin:.2rem 0 .2rem"></p>'
+    + '<p id="systemFs" class="muted" style="font-size:.85rem;margin:.2rem 0 .2rem"></p>'
+    + '<p id="systemTemp" class="muted" style="font-size:.85rem;margin:.2rem 0 .2rem;display:none"></p>'
+    + '<p id="clockInfo" class="muted" style="font-size:.85rem;margin:.2rem 0 .2rem"></p>'
+    + '<p id="tzInfo" class="muted" style="font-size:.8rem;margin:.2rem 0 .8rem">'
+    +   '<span id="tzCurrent"></span>'
+    +   '<button id="tzApply" class="btn-ghost" style="display:none;margin-left:.6rem;padding:.2rem .6rem;font-size:.75rem;text-transform:none;letter-spacing:0"></button>'
+    + '</p>'
+    + '<table style="width:100%;border-collapse:collapse;font-size:.8rem"><thead><tr>'
+    + '<th style="text-align:left">'   + esc(t('status.system.col.task'))  + '</th>'
+    + '<th style="text-align:right">'  + esc(t('status.system.col.cpu'))   + '</th>'
+    + '<th style="text-align:right">'  + esc(t('status.system.col.stack')) + '</th>'
+    + '</tr></thead><tbody id="systemTasks"></tbody></table>'
+    + '<label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;margin-top:.9rem;font-size:.85rem">'
+    +   '<input type="checkbox" id="ledQuietChk" style="width:auto">'
+    +   '<span>' + esc(t('status.system.led_quiet')) + '</span></label>'
+    + '<p class="muted" style="font-size:.72rem;margin:.2rem 0 0">'
+    +   esc(t('status.system.led_quiet.hint')) + '</p>'
+    + '<div id="lcdFlipRow" style="display:none">'
+    + '<label style="display:flex;align-items:center;gap:.4rem;font-weight:normal;margin-top:.9rem;font-size:.85rem">'
+    +   '<input type="checkbox" id="lcdFlipChk" style="width:auto">'
+    +   '<span>' + esc(t('status.system.lcd_flip')) + '</span></label>'
+    + '<p class="muted" style="font-size:.72rem;margin:.2rem 0 0">'
+    +   esc(t('status.system.lcd_flip.hint')) + '</p>'
+    + '</div>'
+    + '</details>'
+    + '<details id="thresholdsSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.thresholds.title')) + '</summary>'
+    + '<p class="muted" style="font-size:.85rem;margin:.2rem 0 .8rem">'
+    +   esc(t('status.thresholds.intro')) + '</p>'
+    + '<div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">'
+    + '<label style="display:flex;flex-direction:column;gap:.2rem">'
+    + '  <span style="font-size:.85rem">' + esc(t('status.thresholds.direct')) + '</span>'
+    + '  <select id="thrDirect" style="width:7rem">'
+    + '    <option value="2">2</option>'
+    + '    <option value="4">4</option>'
+    + '    <option value="10">10</option>'
+    + '    <option value="20">20</option>'
+    + '    <option value="50">50</option>'
+    + '    <option value="100">100</option>'
+    + '  </select>'
+    + '  <span class="muted" style="font-size:.7rem;max-width:18rem">'
+    +     esc(t('status.thresholds.direct.help')) + '</span>'
+    + '</label>'
+    + '<label style="display:flex;flex-direction:column;gap:.2rem">'
+    + '  <span style="font-size:.85rem">' + esc(t('status.thresholds.range')) + '</span>'
+    + '  <select id="thrRange" style="width:7rem">'
+    + '    <option value="0">' + esc(t('status.thresholds.range.off')) + '</option>'
+    + '    <option value="10">10</option>'
+    + '    <option value="20">20</option>'
+    + '    <option value="50">50</option>'
+    + '    <option value="100">100</option>'
+    + '    <option value="500">500</option>'
+    + '  </select>'
+    + '  <span class="muted" style="font-size:.7rem;max-width:18rem">'
+    +     esc(t('status.thresholds.range.help')) + '</span>'
+    + '</label>'
+    + '</div>'
+    + '<p id="thrMsg" class="muted" style="font-size:.75rem;margin:.4rem 0 0;min-height:1em"></p>'
+    + '</details>'
+    + '<details id="pbSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.phonebook.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.phonebook.intro')) + '</p>'
+    + '<p id="pbCurrent" style="margin:.4rem 0"></p>'
+    + '<p style="margin:.4rem 0 0">'
+    + '  <button id="pbChange" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.phonebook.change')) + '</button>'
+    + '  <span id="pbSecMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p>'
+    + '<p id="pbSecPick" style="display:none;margin:.6rem 0 0">'
+    + '  <select id="pbSecBook" style="max-width:100%"></select>'
+    + '</p></details>'
+    + '<details id="syncSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.sync.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.sync.intro')) + '</p>'
+    + '<label style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.9rem;color:#222">'
+    + '  <input type="checkbox" id="syncEnable" style="width:auto;margin:0">'
+    + '  <span>' + esc(t('status.sync.enable')) + '</span>'
+    + '</label>'
+    + '<p id="syncStatus" class="muted" style="margin-top:.4rem"></p>'
+    + '<p style="margin:.4rem 0 0">'
+    + '  <button id="syncRun" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.sync.run_now')) + '</button>'
+    + '  <span id="syncMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></details>'
+    + '<details id="localCacheSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.localcache.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.localcache.intro')) + '</p>'
+    + '<label title="' + esc(t('status.localcache.enable.help')) + '" '
+    +   'style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.9rem;color:#222">'
+    + '  <input type="checkbox" id="blEnabled" style="width:auto;margin:0">'
+    + '  <span>' + esc(t('status.localcache.enable')) + '</span>'
+    + '</label>'
+    + '<label title="' + esc(t('status.localcache.wildcards.help')) + '" '
+    +   'style="display:flex;align-items:center;gap:.5rem;margin:.4rem 0;font-size:.9rem;color:#222">'
+    + '  <input type="checkbox" id="blWildcards" style="width:auto;margin:0">'
+    + '  <span>' + esc(t('status.localcache.wildcards')) + '</span>'
+    + '</label>'
+    + '<p id="localCacheStatus" class="muted" style="margin-top:.4rem"></p>'
+    + '<p style="margin:.4rem 0 0">'
+    + '  <button id="blRun" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.localcache.run_now')) + '</button>'
+    + '  <span id="blMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></details>'
+    + '<details id="nameFilterSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.names.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.names.intro')) + '</p>'
+    + '<div style="margin-top:.6rem;max-width:24rem">'
+    + '  <label style="font-size:.85rem">' + esc(t('status.names.patterns'))
+    +     '<input id="nameFilterPatterns" type="text" autocomplete="off" '
+    +       'spellcheck="false" style="width:100%"></label>'
+    + '</div>'
+    + '<p class="muted" style="margin-top:.5rem;font-size:.8rem">'
+    +   esc(t('status.names.help')) + '</p>'
+    + '<p style="margin-top:.6rem">'
+    + '  <button id="nameFilterSave" class="btn-primary" style="padding:.4rem .9rem;font-size:.9rem">'
+    +   esc(t('status.names.save')) + '</button>'
+    + '  <span id="nameFilterMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></details>'
+    + '<details id="mailSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.mail.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.mail.intro')) + '</p>'
+    + '<div style="margin-top:.6rem;display:flex;flex-direction:column;gap:.5rem;max-width:24rem">'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.host'))
+    +     '<input id="mailHost" type="text" autocomplete="off" style="width:100%"></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.security'))
+    +     '<select id="mailSec" style="width:100%">'
+    +       '<option value="tls">' + esc(t('status.mail.security.tls')) + '</option>'
+    +       '<option value="starttls">' + esc(t('status.mail.security.starttls')) + '</option>'
+    +     '</select></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.port'))
+    +     '<input id="mailPort" type="number" min="1" max="65535" style="width:100%"></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.user'))
+    +     '<input id="mailUser" type="text" autocomplete="off" style="width:100%"></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.pass'))
+    +     '<input id="mailPass" type="password" autocomplete="off" style="width:100%">'
+    +     '<span id="mailPassKeep" class="muted" style="font-size:.75rem"></span></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.from'))
+    +     '<input id="mailFrom" type="text" autocomplete="off" style="width:100%"></label>'
+    + '  <label style="font-size:.85rem">' + esc(t('status.mail.to'))
+    +     '<input id="mailTo" type="text" autocomplete="off" style="width:100%"></label>'
+    + '</div>'
+    + '<p class="muted" style="margin-top:.5rem;font-size:.8rem">' + esc(t('status.mail.help')) + '</p>'
+    + '<p style="margin-top:.5rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.mail.on_error.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="mailOnError" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.mail.on_error')) + '</span></label>'
+    + '</p>'
+    + '<p style="margin-top:.4rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.mail.on_spam.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="mailOnSpam" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.mail.on_spam')) + '</span></label>'
+    + '</p>'
+    + '<p style="margin-top:.4rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.mail.on_update.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="mailOnUpdate" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.mail.on_update')) + '</span></label>'
+    + '</p>'
+    + '<p style="margin-top:.6rem">'
+    + '  <button id="mailSave" class="btn-primary" style="padding:.4rem .9rem;font-size:.9rem">'
+    +   esc(t('status.mail.save')) + '</button>'
+    + '  <button id="mailTest" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem;margin-left:.4rem">'
+    +   esc(t('status.mail.test')) + '</button>'
+    + '  <span id="mailMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></details>'
+    + '<details id="annSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.ann.title')) + '</summary>'
+    + '<p id="annCurrent" class="muted"></p>'
+    + '<p style="margin:.4rem 0">'
+    + '  <button id="annPlay" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.ann.play')) + '</button>'
+    + '  <button id="annStop" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.ann.stop')) + '</button>'
+    + '  <button id="annReset" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem;margin-left:.5rem">'
+    +   esc(t('status.ann.reset.button')) + '</button>'
+    + '</p>'
+    + '<label style="margin-top:.8rem">'
+    +   esc(t('status.ann.upload.label', {s: 30}))
+    +   '<input id="annFile" type="file" accept="audio/*" style="margin-top:.3rem">'
+    + '</label>'
+    + '<p style="margin-top:.4rem">'
+    + '  <button id="annUpload" class="btn-primary" style="padding:.4rem .9rem;font-size:.9rem" disabled>'
+    +   esc(t('status.ann.upload.submit')) + '</button>'
+    + '  <span id="annMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p>'
+    + '<p style="margin-top:.8rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.ann.accept_test.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="annAcceptTest" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.ann.accept_test')) + '</span>'
+    + '  </label>'
+    + '</p></details>'
+    + '<details id="fwSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.fw.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.fw.intro')) + '</p>'
+    + '<p id="fwFailed" style="display:none;margin-top:.3rem;color:#d93025"></p>'
+    + '<p id="fwCurrent" class="muted" style="margin-top:.3rem"></p>'
+    + '<p style="margin-top:.6rem">'
+    + '  <input type="file" id="fwFile" accept=".bin,application/octet-stream" style="display:none">'
+    + '  <button id="fwPick" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.fw.pick')) + '</button>'
+    + '  <span id="fwFileName" class="muted" style="margin-left:.6rem"></span>'
+    + '</p>'
+    + '<p style="margin-top:.4rem">'
+    + '  <button id="fwUpload" class="btn-primary" style="padding:.4rem .9rem;font-size:.9rem" disabled>'
+    +   esc(t('status.fw.submit')) + '</button>'
+    + '  <button id="fwCheck" class="btn-ghost" style="padding:.3rem .7rem;font-size:.85rem;margin-left:.4rem">'
+    +   esc(t('status.fw.check')) + '</button>'
+    + '  <span id="fwMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p>'
+    + '<p style="margin-top:.6rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.fw.auto_update.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="fwAutoUpdate" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.fw.auto_update')) + '</span>'
+    + '  </label>'
+    + '</p>'
+    + '<p style="margin-top:.4rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.fw.channel.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <span>' + esc(t('status.fw.channel')) + '</span>'
+    + '    <select id="fwChannel" style="width:auto;margin:0">'
+    + '      <option value="stable">' + esc(t('status.fw.channel.stable')) + '</option>'
+    + '      <option value="beta">' + esc(t('status.fw.channel.beta')) + '</option>'
+    + '    </select>'
+    + '  </label>'
+    + '</p>'
+    + '<p style="margin-top:.4rem;font-size:.85rem">'
+    + '  <label title="' + esc(t('status.fw.crash_report.help')) + '" '
+    +    'style="display:flex;align-items:center;gap:.4rem;font-weight:400;color:#444;margin:0">'
+    + '    <input id="fwCrashReport" type="checkbox" style="width:auto;margin:0">'
+    + '    <span>' + esc(t('status.fw.crash_report')) + '</span>'
+    + '  </label>'
+    + '</p></details>'
+    + '<details id="authSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.auth.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.auth.intro')) + '</p>'
+    + '<p id="authState" class="muted" style="margin-top:.4rem"></p>'
+    + '<p id="authActivateHint" class="muted" style="display:none;margin-top:.4rem">'
+    +   esc(t('status.auth.activate.intro')) + '</p>'
+    + '<p style="margin-top:.6rem">'
+    + '  <button id="authEnable" class="btn-primary" style="display:none;padding:.4rem .9rem;font-size:.9rem">'
+    +    esc(t('status.auth.enable')) + '</button>'
+    + '  <button id="authLogout" class="btn-ghost" style="display:none;padding:.3rem .7rem;font-size:.85rem">'
+    +    esc(t('status.auth.logout')) + '</button>'
+    + '  <button id="authDisable" class="btn-ghost" style="display:none;border-color:#d93025;color:#d93025;padding:.3rem .7rem;font-size:.85rem;margin-left:.4rem">'
+    +    esc(t('status.auth.disable')) + '</button>'
+    + '</p></details>'
+    + '<details id="resetSection" class="adminsec" style="display:none">'
+    + '<summary>' + esc(t('status.reset.title')) + '</summary>'
+    + '<p class="muted">' + esc(t('status.reset.intro')) + '</p>'
+    + '<p style="margin-top:.6rem">'
+    + '<button id="resetBtn" class="btn-ghost" style="border-color:#d93025;color:#d93025;padding:.3rem .7rem;font-size:.85rem">'
+    +   esc(t('status.reset.button')) + '</button>'
+    + '<span id="resetMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></details>'
+    // Dev-only crash trigger. Hidden in production by JS below
+    // (s.crash_test_enabled=false leaves display:none in place).
+    + '<p id="crashTestRow" style="display:none;margin-top:1rem">'
+    + '<button id="crashTestBtn" class="btn-ghost" style="border-color:#d93025;color:#d93025;padding:.3rem .7rem;font-size:.85rem">'
+    +   'Panic auslösen (Dev)</button></p>';
+  // Freshly (re)built DOM — let the next poll prefill the mail form once.
+  mailPrefilled = false;
+  applyLangStatus();   // restore the translation bubble after the rebuild
+  refreshAll();
+  pollTimer = setInterval(refreshAll, 3000);
+}
+
+function renderHero(sipDone, tokenDone){
+  const slot = $('heroSlot');
+  if (!slot) return;
+  const step = (done, num, labelKey, ctaKey, href) =>
+      '<div class="hero-step' + (done ? ' done' : '') + '">'
+    + '<div class="mark">' + (done ? '✓' : num) + '</div>'
+    + '<div class="body"><strong>' + esc(t(labelKey)) + '</strong>'
+    + (done ? '' : '<a class="btn-primary" href="' + href + '">'
+                 + esc(t(ctaKey)) + '</a>')
+    + '</div></div>';
+  slot.innerHTML = ''
+    + '<section class="hero">'
+    + '<h2>' + esc(t('hero.title')) + '</h2>'
+    + '<p>'  + esc(t('hero.intro')) + '</p>'
+    + step(sipDone,   '1',
+           sipDone   ? 'hero.step1.done' : 'hero.step1.todo',
+           'hero.cta.sip',   '#/setup/sip')
+    + step(tokenDone, '2',
+           tokenDone ? 'hero.step2.done' : 'hero.step2.todo',
+           'hero.cta.token', '#/setup/token')
+    + '</section>';
+}
+
+// Latest per-boot factory-reset nonce, updated every status poll.
+// Used in the /api/factory-reset POST body so that a POST replayed
+// by the browser across a reboot carries a now-stale value.
+let resetNonce = '';
+
+// The status-email form is prefilled from /api/status exactly once per
+// dashboard build (reset in the build function above), so the 3s poll
+// does not overwrite what the user is typing.
+let mailPrefilled = false;
+let namesPrefilled = false;
+
+// IDs of sections that the dashboard shows or hides on each poll, so
+// we can toggle the entire dashboard visibility in one go when the
+// gate kicks us out (401 from /api/status).
+// regionSection is in the list so the auth gate hides it with everything
+// else (its POST would 401 anyway), but it is deliberately *not* hidden by
+// the setup-incomplete branch below — picking a language and country is
+// useful before SIP and the token are configured.
+const DASHBOARD_SECTIONS = ['heroSlot', 'statusSection', 'callsSection',
+  'regionSection', 'thresholdsSection', 'errorsSection', 'resetSection',
+  'annSection', 'localCacheSection', 'nameFilterSection', 'syncSection',
+  'pbSection',
+  'fwSection', 'mailSection', 'authSection'];
+
+// Maps `?login_error=<code>` query values that web_auth_handle_callback
+// emits to localized text shown in the login section's red banner.
+const LOGIN_ERROR_KEYS = {
+  mismatch: 'login.error.mismatch',
+  rejected: 'login.error.rejected',
+  expired:  'login.error.expired',
+  persist:  'login.error.persist',
+  missing:  'login.error.missing',
+};
+
+// True once a callback error has been surfaced. Pins the SPA on the
+// login screen so e.g. an activation persist failure (gate stays off,
+// /api/status would return 200 → dashboard) cannot bury the error.
+// Cleared by reloading the page (URL is stripped on first show).
+let stickyLoginError = false;
+
+function showLoginState(){
+  const loginSec = $('loginSection');
+  if (loginSec) loginSec.style.display = '';
+  for (const id of DASHBOARD_SECTIONS){
+    const el = $(id);
+    if (el) el.style.display = 'none';
+  }
+
+  // Lazily wire the login button so the "stay signed in" checkbox is
+  // forwarded to /auth/start as ?remember=1. Plain navigation works
+  // unchanged when JS is disabled — server will just not remember.
+  const loginBtn = $('loginButton');
+  if (loginBtn && !loginBtn.onclick){
+    loginBtn.onclick = (e) => {
+      e.preventDefault();
+      const remember = $('loginRemember') && $('loginRemember').checked;
+      window.location.href = '/auth/start' + (remember ? '?remember=1' : '');
+    };
+  }
+
+  // Surface a callback error once, then strip it from the URL so a
+  // browser reload doesn't re-show a stale message. The DOM keeps it
+  // visible via stickyLoginError until the user navigates away.
+  const params = new URLSearchParams(location.search);
+  const errCode = params.get('login_error');
+  if (errCode){
+    const expected = params.get('expected') || '';
+    // For mismatch, the dongle attaches the pinned owner-name so the
+    // banner can name it explicitly — much friendlier than a generic
+    // "wrong account" message that leaves the user guessing which one.
+    const key = (errCode === 'mismatch' && expected)
+      ? 'login.error.mismatch_named'
+      : (LOGIN_ERROR_KEYS[errCode] || 'login.error.generic');
+    const errEl = $('loginError');
+    if (errEl){
+      errEl.textContent = t(key, {expected});
+      errEl.style.display = '';
+    }
+    stickyLoginError = true;
+    params.delete('login_error');
+    params.delete('expected');
+    const qs = params.toString();
+    history.replaceState(null, '',
+      location.pathname + (qs ? '?' + qs : '') + location.hash);
+  }
+}
+
+function hideLoginState(){
+  const loginSec = $('loginSection');
+  if (loginSec) loginSec.style.display = 'none';
+}
+
+async function refreshAll(){
+  // Sticky login error from a previous /auth/callback bounce — keep
+  // the user on the login screen until they take action. Checked
+  // before /api/status so a gate-off state (e.g. persist failure
+  // during activation) can't immediately dismiss the banner. The URL
+  // form covers the very first poll right after the redirect; the
+  // sticky flag covers every subsequent poll once the URL is stripped.
+  if (stickyLoginError || new URLSearchParams(location.search).has('login_error')){
+    showLoginState();
+    return;
+  }
+  const sResp = await fetch('/api/status').catch(() => null);
+  if (sResp && sResp.status === 401){
+    showLoginState();
+    return;
+  }
+  const [s, calls, errs] = await Promise.all([
+    sResp && sResp.ok ? sResp.json().catch(() => null) : null,
+    fetchJson('/api/calls'),
+    fetchJson('/api/errors'),
+  ]);
+  if (!s) return;
+  hideLoginState();
+  // Keeps the "is a pack still coming?" answer fresh for awaitUiPack without
+  // any request of its own — this poll runs every 3 s anyway.
+  noteI18nState(s.i18n);
+  resetNonce = s.reset_nonce || '';
+  syncRegionSelectors(s);
+  const sipConfigured = !!(s.sip.host && s.sip.user);
+  const tokenSet      = !!s.phoneblock.token_set;
+  // token_ok defaults to true when the field is missing (older
+  // firmware) so a stale frontend never falsely reports "rejected".
+  const tokenOk       = s.phoneblock.token_ok !== false;
+  const heroSlot      = $('heroSlot');
+  const statusSec     = $('statusSection');
+  const callsSec      = $('callsSection');
+  const thresholdsSec = $('thresholdsSection');
+  const errorsSec     = $('errorsSection');
+  const resetSec      = $('resetSection');
+  const annSec        = $('annSection');
+  const syncSec       = $('syncSection');
+  const pbSec         = $('pbSection');
+  const localCacheSec = $('localCacheSection');
+  const nameFilterSec = $('nameFilterSection');
+  const fwSec         = $('fwSection');
+  const mailSec       = $('mailSection');
+  const authSec       = $('authSection');
+  if (!sipConfigured || !tokenSet){
+    // Setup incomplete — show the hero with per-step progress until
+    // both SIP and the PhoneBlock token are configured. The status
+    // dashboard below would otherwise advertise a "ready" state that
+    // the device cannot actually deliver.
+    renderHero(sipConfigured, tokenSet);
+    statusSec.style.display = 'none';
+    callsSec.style.display = 'none';
+    thresholdsSec.style.display = 'none';
+    errorsSec.style.display = 'none';
+    annSec.style.display = 'none';
+    syncSec.style.display = 'none';
+    pbSec.style.display = 'none';
+    localCacheSec.style.display = 'none';
+    nameFilterSec.style.display = 'none';
+    resetSec.style.display = 'none';
+    fwSec.style.display = 'none';
+    mailSec.style.display = 'none';
+    authSec.style.display = 'none';
+    return;
+  }
+  heroSlot.innerHTML = '';
+  statusSec.style.display = '';
+  callsSec.style.display = '';
+  thresholdsSec.style.display = '';
+  errorsSec.style.display = '';
+  annSec.style.display = '';
+  syncSec.style.display = '';
+  pbSec.style.display = '';
+  localCacheSec.style.display = '';
+  nameFilterSec.style.display = '';
+  resetSec.style.display = '';
+  fwSec.style.display = '';
+  mailSec.style.display = '';
+  authSec.style.display = '';
+
+  // Local blocklist-cache section: status line + wildcards toggle +
+  // manual "download now" button. The task runs daily on its own; the
+  // button is for fresh setups where the user does not want to wait
+  // for the next scheduled tick.
+  const bl = s.blocklist || {};
+  const blEnabled  = $('blEnabled');
+  // Default to enabled when the field is absent (older firmware) so the
+  // UI never mis-reports an active cache as off.
+  const blOn = bl.enabled !== false;
+  blEnabled.checked = blOn;
+  const blStatus = $('localCacheStatus');
+  const blAgo = bl.last_ago_s >= 0 ? fmtSec(bl.last_ago_s) : '–';
+  if (!blOn){
+    blStatus.textContent = t('status.localcache.disabled');
+    blStatus.style.color = '#888';
+  } else if (bl.running){
+    blStatus.textContent = t('status.localcache.running');
+    blStatus.style.color = '#e8710a';
+  } else if (!bl.ever_ran && !bl.have_community && !bl.have_personal){
+    blStatus.textContent = t('status.localcache.never');
+    blStatus.style.color = '#888';
+  } else if (bl.ever_ran && !bl.last_ok){
+    blStatus.textContent = t('status.localcache.last_fail',
+      {ago: blAgo, err: bl.last_error || '–'});
+    blStatus.style.color = '#d93025';
+  } else {
+    blStatus.textContent = t('status.localcache.have',
+      {community: bl.community_size || 0,
+       personal:  bl.personal_size  || 0,
+       ago:       blAgo});
+    blStatus.style.color = '#188038';
+  }
+  const blWildcards = $('blWildcards');
+  const blRun       = $('blRun');
+  blWildcards.checked = !!bl.wildcards;
+  // The wildcards toggle and the manual download only make sense while
+  // the cache is on; grey them out when it is disabled.
+  blWildcards.disabled = !blOn;
+  blRun.disabled = !blOn || !!bl.running;
+  if (!blEnabled.onchange){
+    blEnabled.onchange = async () => {
+      const want = blEnabled.checked;
+      blEnabled.disabled = true;
+      const body = new URLSearchParams();
+      body.append('blocklist_enabled', want ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll reconciles */ }
+      blEnabled.disabled = false;
+      refreshAll();
+    };
+  }
+  if (!blWildcards.onchange){
+    blWildcards.onchange = async () => {
+      const want = blWildcards.checked;
+      blWildcards.disabled = true;
+      const body = new URLSearchParams();
+      body.append('blocklist_wildcards', want ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll reconciles */ }
+      blWildcards.disabled = false;
+      refreshAll();
+    };
+  }
+  if (!blRun.onclick){
+    blRun.onclick = async () => {
+      const m = $('blMsg');
+      blRun.disabled = true;
+      m.textContent = '';
+      try {
+        const r = await fetch('/api/blocklist-sync/run', {method: 'POST'});
+        const d = await r.json().catch(() => ({}));
+        m.textContent = d.ok ? t('status.localcache.triggered')
+                              : t('status.localcache.busy');
+        m.style.color = d.ok ? '#188038' : '#e8710a';
+      } catch (_){
+        m.textContent = 'Network error';
+        m.style.color = '#d93025';
+      }
+      refreshAll();
+    };
+  }
+
+  // Caller-name filter: one text field holding the '|'-separated patterns
+  // exactly as the device stores them (issue #502). Prefilled once, so a
+  // poll cannot overwrite what the user is typing.
+  const nfInput = $('nameFilterPatterns');
+  if (nfInput && !namesPrefilled){
+    nfInput.value = (s.names || {}).patterns || '';
+    namesPrefilled = true;
+  }
+  const nfSave = $('nameFilterSave');
+  if (nfSave && !nfSave.onclick){
+    // Keep in step with NAME_FILTER_MAX / NAME_FILTER_PATTERN_CAP in
+    // main/name_filter.h — the firmware rejects a spec that exceeds either.
+    const NAME_FILTER_MAX = 8;
+    const NAME_FILTER_PATTERN_CAP = 40;
+    nfSave.onclick = async () => {
+      const m = $('nameFilterMsg');
+      // Split the way name_filter_parse() does, so the counts checked here
+      // are the counts the firmware will see. An empty field is valid: that
+      // is how the filter is switched off.
+      const pats = nfInput.value.split('|')
+                     .map(p => p.trim()).filter(p => p !== '');
+      if (pats.length > NAME_FILTER_MAX){
+        m.textContent = t('status.names.err.many', {max: NAME_FILTER_MAX});
+        m.style.color = '#d93025';
+        nfInput.focus();
+        return;
+      }
+      if (pats.some(p => p.length >= NAME_FILTER_PATTERN_CAP)){
+        m.textContent = t('status.names.err.long',
+                          {max: NAME_FILTER_PATTERN_CAP - 1});
+        m.style.color = '#d93025';
+        nfInput.focus();
+        return;
+      }
+      nfSave.disabled = true;
+      m.textContent = '';
+      const body = new URLSearchParams();
+      body.append('spam_names', pats.join('|'));
+      let ok = false;
+      try {
+        const r = await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+        ok = r.ok;
+      } catch (_){}
+      nfSave.disabled = false;
+      // Show the normalized spec that was actually stored.
+      if (ok) nfInput.value = pats.join('|');
+      m.textContent = ok ? t('status.names.saved') : t('status.names.failed');
+      m.style.color = ok ? '#188038' : '#d93025';
+    };
+  }
+
+  // Phonebook target for new contacts. Shows what the next "+" will
+  // write to, and lets the user change it up front instead of waiting to
+  // be asked on the first add.
+  const pbk = s.phonebook || {};
+  const pbCurrent = $('pbCurrent');
+  const pbChange  = $('pbChange');
+  if (!pbk.available){
+    pbCurrent.textContent = t('status.phonebook.unavailable');
+    pbCurrent.style.color = '#888';
+    pbChange.disabled = true;
+  } else {
+    pbCurrent.style.color = '#222';
+    pbCurrent.textContent = pbk.id
+      ? t('status.phonebook.current', {name: pbk.name || pbk.id})
+      : t('status.phonebook.unset');
+    pbChange.disabled = false;
+  }
+  if (!pbChange.onclick){
+    pbChange.onclick = async () => {
+      const row = $('pbSecPick');
+      const sel = $('pbSecBook');
+      const msg = $('pbSecMsg');
+      pbChange.disabled = true;
+      pbSetMsg(msg, '');
+      const loaded = await pbLoadBooks(sel, msg);
+      pbChange.disabled = false;
+      if (loaded) row.style.display = '';
+    };
+  }
+  if (!$('pbSecBook').onchange){
+    $('pbSecBook').onchange = async () => {
+      const sel = $('pbSecBook');
+      const msg = $('pbSecMsg');
+      const opt = sel.options[sel.selectedIndex];
+      const body = new URLSearchParams();
+      body.append('fb_phonebook', sel.value);
+      body.append('fb_phonebook_name', (opt && opt.dataset.name) || '');
+      sel.disabled = true;
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+        pbSetMsg(msg, t('status.phonebook.saved'), '#188038');
+      } catch (_){
+        pbSetMsg(msg, t('pb.dialog.error.unreachable'), '#d93025');
+      }
+      sel.disabled = false;
+      $('pbSecPick').style.display = 'none';
+      await refreshAll();
+    };
+  }
+
+  // Blocklist sync section: show either "unavailable" (no FB app
+  // creds in NVS), "never run", "running", "last ok", "last partial"
+  // or "last failed". Status line is colour-coded; the manual
+  // trigger button is always visible so the user can test.
+  const sync = s.sync || {};
+  const syncStatus = $('syncStatus');
+  const syncRun    = $('syncRun');
+  const syncEnable = $('syncEnable');
+  const ago        = sync.last_ago_s >= 0 ? fmtSec(sync.last_ago_s) : '–';
+  syncEnable.checked = !!sync.enabled;
+  syncEnable.disabled = !sync.available;
+  if (!sync.available){
+    syncStatus.textContent = t('status.sync.unavailable');
+    syncStatus.style.color = '#888';
+    syncRun.disabled = true;
+  } else if (!sync.enabled){
+    // Auto sync off but the manual button stays available so the
+    // user can still test or do one-off submissions.
+    syncStatus.textContent = t('status.sync.disabled');
+    syncStatus.style.color = '#888';
+    syncRun.disabled = false;
+  } else if (sync.running){
+    syncStatus.textContent = t('status.sync.running');
+    syncStatus.style.color = '#e8710a';
+    syncRun.disabled = true;
+  } else if (!sync.ever_ran){
+    syncStatus.textContent = t('status.sync.never');
+    syncStatus.style.color = '#888';
+    syncRun.disabled = false;
+  } else if (!sync.last_ok){
+    syncStatus.textContent = t('status.sync.last_fail',
+      {ago, err: sync.last_error || '–'});
+    syncStatus.style.color = '#d93025';
+    syncRun.disabled = false;
+  } else if (sync.last_failed > 0){
+    syncStatus.textContent = t('status.sync.last_partial',
+      {ago, n: sync.last_pushed, f: sync.last_failed});
+    syncStatus.style.color = '#e8710a';
+    syncRun.disabled = false;
+  } else {
+    syncStatus.textContent = t('status.sync.last_ok',
+      {ago, n: sync.last_pushed});
+    syncStatus.style.color = '#188038';
+    syncRun.disabled = false;
+  }
+  if (!syncEnable.onchange){
+    syncEnable.onchange = async () => {
+      const want = syncEnable.checked;
+      syncEnable.disabled = true;
+      const body = new URLSearchParams();
+      body.append('sync_enabled', want ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll will reconcile */ }
+      refreshAll();
+    };
+  }
+  if (!syncRun.onclick){
+    syncRun.onclick = async () => {
+      const m = $('syncMsg');
+      syncRun.disabled = true;
+      m.textContent = '';
+      try {
+        const r = await fetch('/api/sync/run', {method: 'POST'});
+        const d = await r.json().catch(() => ({}));
+        m.textContent = d.ok ? t('status.sync.triggered') : t('status.sync.busy');
+        m.style.color = d.ok ? '#188038' : '#e8710a';
+      } catch (_){
+        m.textContent = 'Network error';
+        m.style.color = '#d93025';
+      }
+      // Next poll will reflect the "running" state and re-enable
+      // the button when done.
+    };
+  }
+
+  // Announcement subsection: show what's currently active + whether
+  // the reset-to-default shortcut is meaningful.
+  const ann = s.announcement || {custom: false, bytes: 0};
+  const kb = Math.round(ann.bytes / 1024);
+  $('annCurrent').textContent = ann.custom
+    ? t('status.ann.custom',  {kb})
+    : t('status.ann.default', {kb});
+  $('annReset').style.display = ann.custom ? '' : 'none';
+  if (!$('annPlay').onclick)  wireAnnouncement();
+
+  // Accept-test-calls toggle: wired here rather than in
+  // wireAnnouncement() because the persisted device flag flows
+  // through the polled /api/status payload, not the announcement
+  // upload helpers.
+  const annAcceptTest = $('annAcceptTest');
+  annAcceptTest.checked = ann.accept_test_calls === true;
+  if (!annAcceptTest.onchange){
+    annAcceptTest.onchange = async () => {
+      const want = annAcceptTest.checked;
+      annAcceptTest.disabled = true;
+      const body = new URLSearchParams();
+      body.append('accept_test_calls', want ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll will reconcile */ }
+      annAcceptTest.disabled = false;
+      refreshAll();
+    };
+  }
+
+  // SIP pill + detail
+  const sipPill = $('sipPill');
+  const sipCta  = $('sipCta');
+  if (!sipConfigured){
+    sipPill.textContent = t('status.sip.not_configured');
+    sipPill.className = 'pill bad';
+    $('sipDetail').textContent = '';
+    sipCta.textContent = t('status.sip.setup_cta');
+  } else if (s.sip.registered){
+    sipPill.textContent = t('status.sip.connected');
+    sipPill.className = 'pill ok';
+    const parts = [
+      t('status.sip.since', {duration: fmtSec(s.sip.registered_for_s)}),
+      t('status.sip.at', {host: s.sip.host, user: s.sip.user}),
+    ];
+    if (s.sip.internal_number){
+      parts.push(t('status.sip.ext', {n: s.sip.internal_number}));
+    }
+    if (s.sip.public_ip){
+      parts.push(t('status.sip.public_ip', {ip: s.sip.public_ip}));
+    }
+    if (s.sip.nat_mapping === 'endpoint-dependent'){
+      parts.push(t('status.sip.nat_symmetric'));
+    } else if (s.sip.stun){
+      parts.push(t('status.sip.stun', {server: s.sip.stun, nat: s.sip.nat_mapping || 'unknown'}));
+    }
+    $('sipDetail').textContent = parts.join(' · ');
+    sipCta.textContent = t('status.sip.redo_cta');
+  } else {
+    // Configured but not yet registered — treat as "connecting" while
+    // the task retries in the background, rather than as a hard error.
+    sipPill.textContent = t('status.sip.connecting');
+    sipPill.className = 'pill warn';
+    const parts = [ t('status.sip.at', {host: s.sip.host, user: s.sip.user}) ];
+    if (s.sip.internal_number){
+      parts.push(t('status.sip.ext', {n: s.sip.internal_number}));
+    }
+    $('sipDetail').textContent = parts.join(' · ');
+    sipCta.textContent = t('status.sip.redo_cta');
+  }
+  // Always offer a way into the wizard — hiding the button on the
+  // "happy path" leaves the user stranded when they need to change
+  // the registrar or the admin password later.
+  sipCta.style.display = '';
+
+  // Token pill + actions
+  const tokenPill  = $('tokenPill');
+  const tokenCta   = $('tokenCta');
+  const tokenTest  = $('tokenTest');
+  const tokenRenew = $('tokenRenew');
+  if (tokenSet){
+    if (tokenOk){
+      tokenPill.textContent = t('status.token.set');
+      tokenPill.className = 'pill ok';
+      // Don't clobber an inline test result the user may just have
+      // produced — clear only when we are switching away from the
+      // rejected state.
+      const m = $('tokenMsg');
+      if (m.dataset.persist === 'rejected'){
+        m.textContent = '';
+        m.style.color = '';
+        delete m.dataset.persist;
+      }
+    } else {
+      tokenPill.textContent = t('status.token.rejected');
+      tokenPill.className = 'pill bad';
+      const m = $('tokenMsg');
+      m.textContent = t('status.token.rejected.msg');
+      m.style.color = '#d93025';
+      m.dataset.persist = 'rejected';
+    }
+    tokenCta.style.display   = 'none';
+    tokenTest.style.display  = '';
+    tokenRenew.style.display = '';
+  } else {
+    tokenPill.textContent = t('status.token.missing');
+    tokenPill.className = 'pill bad';
+    tokenCta.style.display   = '';
+    tokenTest.style.display  = 'none';
+    tokenRenew.style.display = 'none';
+    $('tokenMsg').textContent = '';
+  }
+  if (!tokenTest.onclick){
+    tokenTest.onclick = async () => {
+      const m = $('tokenMsg');
+      tokenTest.disabled = true;
+      m.textContent = t('status.token.testing');
+      m.style.color = '#888';
+      try {
+        const r = await fetch('/api/token-test', { method: 'POST' });
+        const d = await r.json().catch(() => ({}));
+        // Render the outcome from i18n instead of echoing the
+        // server's English message — the server ships ok + a
+        // stable result code so the UI stays localised.
+        let key;
+        if (d.ok)                   key = 'status.token.test.ok';
+        else if (d.code === 'none') key = 'status.token.test.none';
+        else                        key = 'status.token.test.fail';
+        m.textContent = t(key);
+        m.style.color = d.ok ? '#188038' : '#d93025';
+      } catch (_){
+        m.textContent = 'Network error';
+        m.style.color = '#d93025';
+      }
+      tokenTest.disabled = false;
+    };
+  }
+
+  $('cTotal').textContent = s.counters.total;
+  $('cSpam').textContent  = s.counters.spam_blocked;
+  $('cLegit').textContent = s.counters.legitimate;
+  $('cErr').textContent   = s.counters.errors;
+  // The only line that wants markup (the version links to its release notes),
+  // so it goes through innerHTML — but the template comes from the downloaded
+  // pack, which is NOT signed (see i18n_sync.h) and therefore untrusted input.
+  // So escape the whole assembled line, then splice the one <a> we do want
+  // over a sentinel that cannot survive as markup. A hostile pack can thus
+  // still show wrong text — the accepted trade — but cannot inject script into
+  // this page, which holds the PhoneBlock token and can rewrite SIP settings.
+  // Sentinel: a control character esc() leaves alone and that no translation
+  // can contain by accident. Spliced via a replacer function so a '$' in the
+  // link can never be read as a replacement pattern.
+  const FW_MARK = '\u0001fw\u0001';
+  const infoLine = t('status.info', {
+    fw: FW_MARK,
+    ip: s.ip_address || '–',
+    uptime: fmtSec(s.uptime_s),
+    api: s.phoneblock.last_api_ms > 0 ? s.phoneblock.last_api_ms + ' ms' : '–',
+  });
+  $('statusInfo').innerHTML =
+    esc(infoLine).replace(FW_MARK, () => fwLink(s.firmware_version));
+
+  // System load / memory — diagnostic card. Surfaces a runaway task as a
+  // high CPU% so "the dongle is hot/unstable" can be pinned, not guessed.
+  if (s.system) {
+    const kb = (n) => (n / 1024).toFixed(1) + ' KB';
+    $('systemSection').style.display = '';
+    $('systemHeap').textContent = t('status.system.heap', {
+      free: kb(s.system.free_heap), min: kb(s.system.min_free_heap),
+      largest: kb(s.system.largest_free_block),
+    });
+    if (s.system.fs_total != null) {
+      $('systemFs').style.display = '';
+      $('systemFs').textContent = t('status.system.fs', {
+        free: kb(s.system.fs_free), total: kb(s.system.fs_total),
+        used: kb(s.system.fs_used),
+      });
+    } else {
+      $('systemFs').style.display = 'none';
+    }
+    // Die temperature: only chips with a sensor report it (not the classic
+    // ESP32), so the line stays hidden there.
+    if (s.system.temp_c != null) {
+      $('systemTemp').style.display = '';
+      $('systemTemp').textContent = t('status.system.temp',
+        {temp: s.system.temp_c.toFixed(1)});
+    } else {
+      $('systemTemp').style.display = 'none';
+    }
+    const tb = $('systemTasks');
+    tb.innerHTML = '';
+    const tasks = (s.system.tasks || []).slice()
+      // Name as tie-break: most tasks sit at 0 %, and the order the
+      // firmware lists them in changes between snapshots.
+      .sort((a, b) => b.cpu_pct - a.cpu_pct || a.name.localeCompare(b.name));
+    for (const tk of tasks) {
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + esc(tk.name) + '</td>'
+      + '<td style="text-align:right">' + tk.cpu_pct + '%</td>'
+      + '<td style="text-align:right">' + tk.stack_free + '</td>';
+      tb.appendChild(tr);
+    }
+  }
+
+  // Wall clock + timezone.
+  if (s.time) {
+    const ci = $('clockInfo');
+    if (ci) ci.textContent = s.time.valid
+      ? t('status.clock.now', { time: (s.time.local || '').replace('T', ' ') })
+      : t('status.clock.pending');
+    applyTz(s.time.tz || '');
+  }
+
+  // Calls
+  const tbody = $('callsBody');
+  // PhoneBlock's web UI serves per-number detail pages at
+  // <site>/nums/<zeroZero>. We don't link to phoneblock.net directly:
+  // the dongle's broker /auth/login-link mints a one-shot login
+  // ticket using the API token (which never leaves the dongle) and
+  // 302s the browser.
+  //
+  // Two categories are kept off the public lookup so that they never
+  // leak to phoneblock.net via clicks:
+  //   - non-dialable numbers (internal Fritz!Box codes like *21#,
+  //     **622) — same predicate the firmware uses to skip the API
+  //     query in the first place.
+  //   - phone-book matches the user added themselves (display name
+  //     contains letters and is not the "SPAM" marker) — the user
+  //     already knows who called; sending the contact's number to
+  //     phoneblock.net just to render a public detail page would be
+  //     careless with private contact data. Mirrors the C-side
+  //     is_known_contact() so the UI agrees with sip_register.c on
+  //     which numbers are "PhoneBlock-public".
+  const isPhoneNumberLike = (s) => {
+    if (!s) return false;
+    let digit = false;
+    for (const ch of s) {
+      if (ch >= '0' && ch <= '9') { digit = true; continue; }
+      if ('+ -/().\t'.indexOf(ch) >= 0) continue;
+      return false;
+    }
+    return digit;
+  };
+  const isKnownContact = (display) => {
+    if (!display) return false;
+    if (isPhoneNumberLike(display)) return false;
+    // Match the C is_known_contact(): trim leading whitespace, then
+    // reject "SPAM" / "SPAM:" / "SPAM " (the AnswerBot.SPAM_MARKER the
+    // CardDAV blocklist subscription stamps onto each entry).
+    const trimmed = display.replace(/^[ \t]+/, '');
+    if (/^spam([:\s\-_.]|$)/i.test(trimmed)) return false;
+    return true;
+  };
+  const looksDialable = (num) => {
+    if (!num) return false;
+    const first = num[0];
+    if (first === '+') return num.length > 1 && num[1] >= '0' && num[1] <= '9';
+    return first >= '0' && first <= '9';
+  };
+  // For API-checked entries we wrap the number-column text (whatever
+  // we display there) in a login-broker link to phoneblock.net's
+  // detail page. Phone-book entries skip this step entirely so
+  // private contacts never get round-tripped via phoneblock.net.
+  const linkToNumber = (num, text) => {
+    const next = '/nums/' + encodeURIComponent(num);
+    return '<a href="/auth/login-link?next=' + encodeURIComponent(next)
+         + '" target="_blank" rel="noopener">' + text + '</a>';
+  };
+  const numCell = (num, display, assessment) => {
+    if (!num)                          return '';
+    if (!looksDialable(num))           return esc(num);
+    // A name-pattern hit has a non-numeric display name too, but it is the
+    // opposite of "a contact you know" — link it so the user can look the
+    // number up and rate it on PhoneBlock.
+    if (assessment === 'name_pattern') return linkToNumber(num, esc(num));
+    // A caller you saved as a contact needs no lookup link — and that now
+    // also covers a row whose name the "+ Kontakt" button just filled in:
+    // the link going away is the visible sign that the contact took effect.
+    if (isKnownContact(display))       return esc(num);
+    return linkToNumber(num, esc(num));
+  };
+  // Log characterisation → label. Mirrors verdict_label() in mail.c so
+  // both surfaces read identically. `c.assessment` is the wire name from
+  // web.c (assessment_string); the (Nummer)/(Bereich) qualifier comes from
+  // `c.wildcard`, the direct/range counts from the community signal.
+  const verdictLabel = (c) => {
+    const scope = t(c.wildcard ? 'status.calls.verdict.scope.range'
+                               : 'status.calls.verdict.scope.number');
+    switch (c.assessment) {
+      case 'blacklist': return t('status.calls.verdict.blacklist', {scope});
+      case 'spam_list': return t('status.calls.verdict.spam_list', {scope});
+      case 'name_pattern': return t('status.calls.verdict.name_pattern');
+      case 'test':       return t('status.calls.verdict.test');
+      case 'spam':
+        // A verdict without counts — show plain "SPAM".
+        return (c.direct_votes || c.range_votes)
+          ? t('status.calls.verdict.spam', {direct: c.direct_votes, range: c.range_votes})
+          : t('status.calls.verdict.spam_plain');
+      case 'suspect':
+        return t('status.calls.verdict.suspect', {direct: c.direct_votes, range: c.range_votes});
+      case 'legitimate': return t('status.calls.verdict.legitimate');
+      case 'error':      return t('status.calls.verdict.error');
+      default:           return t('status.calls.verdict.unknown');
+    }
+  };
+  // Colour class per assessment: spam/blacklist red, suspect orange,
+  // legitimate green, unknown grey, error orange.
+  const verdictClass = (a) => {
+    switch (a) {
+      case 'spam': case 'spam_list': case 'blacklist':
+      case 'name_pattern': return 'SPAM';
+      case 'suspect':    return 'SUSPECT';
+      case 'legitimate': return 'LEGITIMATE';
+      case 'error':      return 'ERROR';
+      default:           return 'UNKNOWN';
+    }
+  };
+  // Offering the phonebook shortcut needs Fritz!Box app credentials —
+  // without them there is nothing to write to (manual SIP setups).
+  const pbAvailable = !!(s.phonebook && s.phonebook.available);
+  // The actions a row offers follow from its *current* assessment — every
+  // action updates the listed calls on the device, so after it the row shows
+  // the new state and its buttons change with it:
+  //   open (unknown / suspect / error): report as spam; add as contact.
+  //   SPAM (list, range, API, blacklist): rescue a false positive — as a
+  //     Fritz!Box contact (the firmware also whitelists the number), or, with
+  //     no box to write to, via the PhoneBlock whitelist. Never "report as
+  //     spam" again.
+  //   SPAM by name pattern: the name comes from a phonebook, so the rescue is
+  //     the whitelist (a personal whitelist entry beats the pattern).
+  //   legitimate / test: nothing to do.
+  const SPAM_STATES = ['spam', 'spam_list', 'blacklist', 'name_pattern'];
+  const OPEN_STATES = ['unknown', 'suspect', 'error'];
+  const rowActions = (c) => {
+    if (!PLAIN_NUMBER.test(c.number || '')) return {};
+    const spam = SPAM_STATES.includes(c.assessment);
+    const open = OPEN_STATES.includes(c.assessment);
+    const contact = pbAvailable && !c.display
+                 && (open || (spam && c.assessment !== 'name_pattern'));
+    return {
+      contact,
+      report:    open && tokenSet,
+      whitelist: spam && !contact && tokenSet,
+    };
+  };
+  const hasCalls = calls && calls.calls.length;
+  if (hasCalls){
+    tbody.innerHTML = calls.calls.map(c => {
+      // API-checked entries carry a label/location from PhoneBlock;
+      // phone-book matches and internal codes don't. Switch the
+      // number- and name-columns to the PhoneBlock display variant
+      // when it's available.
+      const apiChecked = !!(c.label && c.label.length);
+      const numCol = apiChecked
+        ? linkToNumber(c.number, esc(c.label))
+        : numCell(c.number, c.display, c.assessment);
+      // A name — from the box or just added as a contact — wins over the
+      // PhoneBlock location.
+      const nameCol = esc(c.display || (apiChecked ? c.location : ''));
+      // Rendered as markup and handled by one delegated listener, because
+      // this table is rebuilt on every 3 s poll. Each button sits in the
+      // column it changes: the contact in Name, spam / whitelist in Urteil.
+      const act = rowActions(c);
+      const verdictExtra = act.report    ? pbSpamButton(c.number)
+                         : act.whitelist ? pbWhitelistButton(c.number)
+                         : '';
+      // Colour follows the assessment: SPAM-VERDACHT gets its own orange
+      // v-SUSPECT (green would wrongly imply "fine"), an un-rated number
+      // gets neutral v-UNKNOWN, and spam/blacklist share red.
+      const verdictCls = verdictClass(c.assessment);
+      return '<tr><td>' + esc(fmtClock(c.age_s, false)) + '</td>'
+        + '<td>' + numCol + '</td>'
+        + '<td>' + nameCol + (act.contact ? pbAddButton(c.number) : '') + '</td>'
+        + '<td class="v-' + esc(verdictCls) + '">' + esc(verdictLabel(c))
+        +   verdictExtra + '</td></tr>';
+    }).join('');
+  } else {
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">' + esc(t('status.calls.empty')) + '</td></tr>';
+  }
+  if (!tbody.onclick){
+    tbody.onclick = (e) => {
+      const add = e.target.closest('button[data-pbnum]');
+      if (add) { pbOpenAddContact(add.dataset.pbnum); return; }
+      const spam = e.target.closest('button[data-spamnum]');
+      if (spam) { pbOpenSpamVote(spam.dataset.spamnum); return; }
+      const wl = e.target.closest('button[data-wlnum]');
+      if (wl) pbOpenWhitelist(wl.dataset.wlnum);
+    };
+  }
+  const callsClearBtn = $('callsClear');
+  callsClearBtn.style.display = hasCalls ? '' : 'none';
+  if (!callsClearBtn.onclick){
+    callsClearBtn.onclick = async () => {
+      callsClearBtn.disabled = true;
+      try { await fetch('/api/calls/clear', { method: 'POST' }); }
+      catch (_){ /* next poll will reflect whatever state we end up in */ }
+      await refreshAll();
+      callsClearBtn.disabled = false;
+    };
+  }
+  const callsLogKnown = $('callsLogKnown');
+  // s.calls.log_known is the persisted device flag; default true so
+  // bestand-dongles keep their current "list everything" behaviour.
+  callsLogKnown.checked = !s || !s.calls || s.calls.log_known !== false;
+  if (!callsLogKnown.onchange){
+    callsLogKnown.onchange = async () => {
+      const want = callsLogKnown.checked;
+      callsLogKnown.disabled = true;
+      const body = new URLSearchParams();
+      body.append('log_known_calls', want ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll will reconcile */ }
+      callsLogKnown.disabled = false;
+      refreshAll();
+    };
+  }
+  // Block thresholds. Both are dropdowns with the same fixed option set
+  // the mobile app offers (direct 2/4/10/20/50/100, range Off/10/20/50/
+  // 100/500). Limiting the choices keeps the server's community-binary
+  // cache, keyed on the (minDirect, minRange) pair, shared across many
+  // dongles. The selection saves on change. We only refresh the visible
+  // value when the user is not currently editing the field — avoids the
+  // polling loop snatching the value out from under them.
+  const thrDirect = $('thrDirect');
+  const thrRange  = $('thrRange');
+  const thrMsg    = $('thrMsg');
+  const pb = (s && s.phoneblock) || {};
+  // Reflect the stored value. A value that predates the fixed option set
+  // (e.g. a custom number from an older firmware) is rounded UP to the
+  // nearest option (ceil), capped at the largest — the same ceil-clamp the
+  // server applies — so the control shows the value actually in effect.
+  const snapThr = (sel, val) => {
+    if (val == null || document.activeElement === sel) return;
+    const v = parseInt(val, 10);
+    if (isNaN(v)) return;
+    const opts = [...sel.options].map(o => parseInt(o.value, 10)).sort((a, b) => a - b);
+    let chosen = opts[opts.length - 1];
+    for (const o of opts) { if (v <= o) { chosen = o; break; } }
+    sel.value = String(chosen);
+  };
+  snapThr(thrDirect, pb.min_direct_votes);
+  snapThr(thrRange, pb.min_range_votes);
+  const flashMsg = (text, color) => {
+    thrMsg.textContent = text;
+    thrMsg.style.color = color;
+    setTimeout(() => { if (thrMsg.textContent === text) thrMsg.textContent = ''; }, 2000);
+  };
+  const saveThreshold = async (sel, field) => {
+    const v = parseInt(sel.value, 10);
+    if (isNaN(v)) return;
+    sel.disabled = true;
+    const body = new URLSearchParams();
+    body.append(field, String(v));
+    try {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString(),
+      });
+      if (r.ok) flashMsg(t('status.thresholds.saved'), '#188038');
+    } catch (_){ /* next poll reconciles */ }
+    sel.disabled = false;
+    refreshAll();
+  };
+  if (!thrDirect.onchange){
+    thrDirect.onchange = () => saveThreshold(thrDirect, 'min_direct_votes');
+  }
+  if (!thrRange.onchange){
+    thrRange.onchange = () => saveThreshold(thrRange, 'min_range_votes');
+  }
+
+  // Errors
+  const list = $('errorsList');
+  const clearBtn = $('errorsClear');
+  const hasErrs = errs && errs.errors.length;
+  if (hasErrs){
+    list.innerHTML = errs.errors.map(e => {
+      // Severity colours the left border + tag: error red, warning amber,
+      // info grey. The .error-row class hard-codes a red border/tint, so
+      // override both inline (otherwise info lines look alarming).
+      const col = e.level === 'E' ? '#d93025'
+                : e.level === 'W' ? '#e8830c' : '#888';
+      const bg  = e.level === 'E' ? '#fffafa'
+                : e.level === 'W' ? '#fffdf6' : '#fafafa';
+      return '<div class="error-row" style="border-left-color:' + col
+        + ';background:' + bg + '"><strong style="color:' + col + '">['
+        + esc(e.tag) + ']</strong> ' + esc(e.message)
+        + ' <span class="muted">'
+        + esc(fmtClock(e.age_s, true)) + '</span></div>';
+    }).join('');
+  } else {
+    list.innerHTML = '<p class="muted">' + esc(t('status.errors.empty')) + '</p>';
+  }
+  clearBtn.style.display = hasErrs ? '' : 'none';
+  if (!clearBtn.onclick){
+    clearBtn.onclick = async () => {
+      clearBtn.disabled = true;
+      try { await fetch('/api/errors/clear', { method: 'POST' }); }
+      catch (_){ /* next poll will reflect whatever state we end up in */ }
+      await refreshAll();
+      clearBtn.disabled = false;
+    };
+  }
+
+  // "Also log INFO" troubleshooting toggle. Reflect the stored state on
+  // every poll; persist via /api/config on change.
+  const logChk = $('logInfoChk');
+  if (logChk){
+    logChk.checked = !!(s.log && s.log.capture_info);
+    logChk.onchange = async () => {
+      const body = new URLSearchParams();
+      body.append('log_info', logChk.checked ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll reconciles */ }
+      refreshAll();
+    };
+  }
+
+  // Status-LED quiet mode. Reflect the stored state on every poll;
+  // persist via /api/config on change.
+  const ledQuietChk = $('ledQuietChk');
+  if (ledQuietChk){
+    ledQuietChk.checked = !!(s.led && s.led.quiet);
+    ledQuietChk.onchange = async () => {
+      const body = new URLSearchParams();
+      body.append('led_quiet', ledQuietChk.checked ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll reconciles */ }
+      refreshAll();
+    };
+  }
+
+  // Display orientation (T-Dongle-S3 only). The status JSON carries
+  // "display" only on a build with a display, so the row stays hidden on
+  // the ESP32 / ESP32-C3 sticks.
+  const lcdFlipRow = $('lcdFlipRow');
+  const lcdFlipChk = $('lcdFlipChk');
+  if (lcdFlipRow && lcdFlipChk){
+    lcdFlipRow.style.display = s.display ? '' : 'none';
+    lcdFlipChk.checked = !!(s.display && s.display.flipped);
+    lcdFlipChk.onchange = async () => {
+      const body = new URLSearchParams();
+      body.append('lcd_flip', lcdFlipChk.checked ? '1' : '0');
+      try {
+        await fetch('/api/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body.toString(),
+        });
+      } catch (_){ /* next poll reconciles */ }
+      refreshAll();
+    };
+  }
+
+  // Access protection ("Login mit PhoneBlock"). Counter buttons:
+  //   - off + token set      → "Enable" button visible
+  //   - off + token missing  → "needs token" hint, no buttons
+  //   - on  + logged in      → state line + Logout + Disable
+  //   - on  + not logged in  → cannot happen here; refreshAll would
+  //     have caught the 401 from /api/status and switched to the
+  //     in-page login state before reaching this branch
+  const auth = s.auth || { enabled: false, logged_in: false };
+  const authState     = $('authState');
+  const authHint      = $('authActivateHint');
+  const authEnableBtn = $('authEnable');
+  const authLogoutBtn = $('authLogout');
+  const authDisableBtn= $('authDisable');
+  if (auth.enabled){
+    // auth.user is pinned at the first successful SSO round-trip
+    // (config_auth_user) and should always be set while auth.enabled
+    // is true. Fall back to the generic "PhoneBlock user" wording if
+    // the field is somehow empty — older firmware on the device, a
+    // backend that didn't yet return a JWT subject, etc.
+    const u = (auth.user || '').trim();
+    authState.textContent = u
+        ? t('status.auth.enabled.user', {user: u})
+        : t('status.auth.enabled');
+    authState.style.color = '#188038';
+    authHint.style.display = 'none';
+    authEnableBtn.style.display = 'none';
+    authLogoutBtn.style.display = '';
+    authDisableBtn.style.display = '';
+  } else if (tokenSet){
+    authState.textContent = t('status.auth.disabled');
+    authState.style.color = '';
+    authHint.style.display = '';
+    authEnableBtn.style.display = '';
+    authLogoutBtn.style.display = 'none';
+    authDisableBtn.style.display = 'none';
+  } else {
+    authState.textContent = t('status.auth.no_token');
+    authState.style.color = '#e8710a';
+    authHint.style.display = 'none';
+    authEnableBtn.style.display = 'none';
+    authLogoutBtn.style.display = 'none';
+    authDisableBtn.style.display = 'none';
+  }
+  if (!authEnableBtn.onclick){
+    // Real navigation: the dongle 302s to phoneblock.net, login,
+    // 302 back to /auth/callback, which sets the cookie and persists
+    // auth_enabled=1 only on success. No JS-side state to manage.
+    authEnableBtn.onclick = () => {
+      window.location.href = '/auth/start?activate=1';
+    };
+  }
+  if (!authLogoutBtn.onclick){
+    authLogoutBtn.onclick = async () => {
+      authLogoutBtn.disabled = true;
+      try {
+        // Server's logout 302s back to /; fetch follows it but stops
+        // once we read .ok — we navigate explicitly below to land
+        // back on the SPA, which then renders the in-page login state.
+        await fetch('/auth/logout', { method: 'POST', redirect: 'manual' });
+      } catch (_){ /* navigate anyway */ }
+      window.location.href = '/';
+    };
+  }
+  if (!authDisableBtn.onclick){
+    authDisableBtn.onclick = async () => {
+      authDisableBtn.disabled = true;
+      try { await fetch('/auth/disable', { method: 'POST' }); }
+      catch (_){ /* next poll will reconcile */ }
+      authDisableBtn.disabled = false;
+      refreshAll();
+    };
+  }
+
+  const resetBtn = $('resetBtn');
+  const resetMsg = $('resetMsg');
+  if (resetBtn && !resetBtn.onclick){
+    resetBtn.onclick = async () => {
+      if (!confirm(t('status.reset.confirm'))) return;
+      resetBtn.disabled = true;
+      resetMsg.textContent = '';
+      try {
+        if (!resetNonce){
+          resetMsg.textContent = t('status.reset.error',
+            {msg: 'No nonce'});
+          resetMsg.style.color = '#d93025';
+          resetBtn.disabled = false;
+          return;
+        }
+        const r = await fetch('/api/factory-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'confirm=' + encodeURIComponent(resetNonce),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.ok){
+          resetMsg.textContent = t('status.reset.running');
+          resetMsg.style.color = '#e8710a';
+          // Device is about to reboot; stop the poll loop so we do
+          // not flood the log with error noise during the outage.
+          stopPolling();
+        } else {
+          resetMsg.textContent = t('status.reset.error',
+            {msg: d.message || r.statusText});
+          resetMsg.style.color = '#d93025';
+          resetBtn.disabled = false;
+        }
+      } catch (_){
+        resetMsg.textContent = t('status.reset.error', {msg: 'Network error'});
+        resetMsg.style.color = '#d93025';
+        resetBtn.disabled = false;
+      }
+    };
+  }
+
+  // Dev-only crash button. Visible iff firmware was built with
+  // CONFIG_CRASH_TEST_ENABLE=y (s.crash_test_enabled=true). On
+  // click: fire POST and let the dongle panic — no result handling,
+  // because the next thing the page sees is either a reboot or
+  // nothing, and either way the user already knows.
+  const crashTestRow = $('crashTestRow');
+  if (crashTestRow) crashTestRow.style.display = s.crash_test_enabled ? '' : 'none';
+  const crashTestBtn = $('crashTestBtn');
+  if (crashTestBtn && !crashTestBtn.onclick){
+    crashTestBtn.onclick = () => {
+      if (!confirm('Panic auslösen?')) return;
+      crashTestBtn.disabled = true;
+      fetch('/api/dev/crash', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'confirm=' + encodeURIComponent(resetNonce || ''),
+      });
+    };
+  }
+
+  // Firmware update: file picker + upload, or check PhoneBlock CDN
+  // for a newer version.
+  const fwCurrent  = $('fwCurrent');
+  if (fwCurrent){
+    fwCurrent.textContent = t('status.fw.current', {
+      partition: s.firmware_partition || '–',
+      version:   s.firmware_version   || '–',
+    });
+  }
+  // Surface a previously rolled-back update so the user knows why
+  // auto-update isn't progressing. The "Check for update" button
+  // below resends with force=true and clears the marker on its own.
+  // Suppress while a manual check is in flight: the marker is
+  // pessimistically set for the version we're currently installing,
+  // not yet a confirmed failure.
+  const fwFailed = $('fwFailed');
+  if (fwFailed){
+    if (!fwUpdateInFlight && s.firmware_failed && s.firmware_failed !== ''){
+      fwFailed.textContent = t('status.fw.failed', {version: s.firmware_failed});
+      fwFailed.style.display = '';
+    } else {
+      fwFailed.style.display = 'none';
+    }
+  }
+  const fwPick       = $('fwPick');
+  const fwFile       = $('fwFile');
+  const fwFileName   = $('fwFileName');
+  const fwUpload     = $('fwUpload');
+  const fwCheck      = $('fwCheck');
+  const fwMsg        = $('fwMsg');
+  const fwAutoUpdate = $('fwAutoUpdate');
+  // s.firmware.auto_update is the persisted device flag. Default true:
+  // a missing value (older firmware that didn't expose the field)
+  // shouldn't make the toggle look "off" in the UI.
+  if (fwAutoUpdate){
+    fwAutoUpdate.checked = !s || !s.firmware || s.firmware.auto_update !== false;
+    if (!fwAutoUpdate.onchange){
+      fwAutoUpdate.onchange = async () => {
+        const want = fwAutoUpdate.checked;
+        fwAutoUpdate.disabled = true;
+        const body = new URLSearchParams();
+        body.append('auto_update', want ? '1' : '0');
+        try {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+          });
+        } catch (_){ /* next poll will reconcile */ }
+        fwAutoUpdate.disabled = false;
+        refreshAll();
+      };
+    }
+  }
+
+  const fwChannel = $('fwChannel');
+  // s.firmware.channel is the persisted device channel ("stable" |
+  // "beta"). Default "stable" when missing (older firmware that didn't
+  // expose the field).
+  if (fwChannel){
+    fwChannel.value = (s && s.firmware && s.firmware.channel === 'beta')
+      ? 'beta' : 'stable';
+    if (!fwChannel.onchange){
+      fwChannel.onchange = async () => {
+        const want = fwChannel.value;
+        fwChannel.disabled = true;
+        const body = new URLSearchParams();
+        body.append('channel', want);
+        try {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+          });
+        } catch (_){ /* next poll will reconcile */ }
+        fwChannel.disabled = false;
+        refreshAll();
+      };
+    }
+  }
+
+  const fwCrashReport = $('fwCrashReport');
+  // s.firmware.crash_report — same default-true treatment as auto_update.
+  if (fwCrashReport){
+    fwCrashReport.checked = !s || !s.firmware || s.firmware.crash_report !== false;
+    if (!fwCrashReport.onchange){
+      fwCrashReport.onchange = async () => {
+        const want = fwCrashReport.checked;
+        fwCrashReport.disabled = true;
+        const body = new URLSearchParams();
+        body.append('crash_report', want ? '1' : '0');
+        try {
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: body.toString(),
+          });
+        } catch (_){ /* next poll will reconcile */ }
+        fwCrashReport.disabled = false;
+        refreshAll();
+      };
+    }
+  }
+
+  // --- status email ---
+  const mail = s.mail || {};
+  if (!mailPrefilled){
+    const mh = $('mailHost');
+    if (mh){
+      mh.value          = mail.host || '';
+      $('mailPort').value = mail.port ? String(mail.port) : '';
+      $('mailSec').value  = mail.security === 'starttls' ? 'starttls' : 'tls';
+      $('mailUser').value = mail.user || '';
+      $('mailFrom').value = mail.from || '';
+      $('mailTo').value   = mail.to   || '';
+      $('mailPassKeep').textContent = mail.pass_set ? t('status.mail.pass.keep') : '';
+      $('mailOnError').checked = !!mail.on_error;
+      $('mailOnSpam').checked  = !!mail.on_spam;
+      $('mailOnUpdate').checked = !!mail.on_update;
+      mailPrefilled = true;
+    }
+  }
+  const mailSave = $('mailSave'), mailTest = $('mailTest');
+  if (mailSave && !mailSave.onclick){
+    const collect = () => {
+      const body = new URLSearchParams();
+      body.append('smtp_host',     $('mailHost').value.trim());
+      body.append('smtp_port',     $('mailPort').value.trim());
+      body.append('smtp_security', $('mailSec').value);
+      body.append('smtp_user',     $('mailUser').value.trim());
+      body.append('smtp_from',     $('mailFrom').value.trim());
+      body.append('smtp_to',       $('mailTo').value.trim());
+      body.append('mail_on_error', $('mailOnError').checked ? '1' : '0');
+      body.append('mail_on_spam',  $('mailOnSpam').checked ? '1' : '0');
+      body.append('mail_on_update', $('mailOnUpdate').checked ? '1' : '0');
+      // Only send the password when the user typed one; an absent field
+      // tells the server to keep the stored value.
+      const pw = $('mailPass').value;
+      if (pw) body.append('smtp_pass', pw);
+      return body;
+    };
+    const save = async () => {
+      const r = await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: collect().toString(),
+      });
+      return r.ok;
+    };
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    // Keep in step with MAIL_RCPT_MAX in main/mail_rcpt.h — the firmware
+    // drops recipients beyond it.
+    const MAIL_RCPT_MAX = 5;
+    // Reject incomplete / malformed input before it reaches the SMTP path,
+    // where a bad value would otherwise fail silently and still report a
+    // green "success": an empty recipient (mail_configured() then refuses
+    // the send) or a non-address like "My Dongle" in the Absender field
+    // (the server rejects MAIL FROM:<My Dongle>). Returns a ready-to-show
+    // message and focuses the offending field, or '' when the form is valid.
+    const validateMail = () => {
+      const bad = (id, key, p) => { $(id).focus(); return t(key, p); };
+      if (!$('mailHost').value.trim()) return bad('mailHost', 'status.mail.err.host');
+      if (!$('mailUser').value.trim()) return bad('mailUser', 'status.mail.err.user');
+      // The password may be left blank only when one is already stored —
+      // the "leave blank to keep it" hint (mailPassKeep) is shown then.
+      if (!$('mailPass').value && !$('mailPassKeep').textContent)
+        return bad('mailPass', 'status.mail.err.pass');
+      // The recipient field takes one or more addresses separated by ';'
+      // (the firmware splits it in mail_rcpt.c, one RCPT TO per address).
+      // Trailing separators and stray spaces are tolerated here exactly as
+      // they are there; every remaining entry has to be a real address, and
+      // the count has to stay within the firmware's cap — otherwise the
+      // surplus would be dropped silently at send time.
+      const rcpts = $('mailTo').value.split(';')
+                      .map(s => s.trim()).filter(s => s !== '');
+      if (rcpts.length === 0 || !rcpts.every(a => EMAIL_RE.test(a)))
+        return bad('mailTo', 'status.mail.err.to');
+      if (rcpts.length > MAIL_RCPT_MAX)
+        return bad('mailTo', 'status.mail.err.to_many', { max: MAIL_RCPT_MAX });
+      // The effective sender is the Absender field, or the SMTP user name
+      // when it is left blank (see config_smtp_from()). Either way it becomes
+      // the MAIL FROM address, which the server rejects unless it is itself a
+      // valid email — so validate whichever one applies. A blank Absender
+      // atop a non-email user name is the case that fails silently (#466);
+      // point the user at the Absender field to supply a real address.
+      const from = $('mailFrom').value.trim();
+      const sender = from || $('mailUser').value.trim();
+      if (!EMAIL_RE.test(sender))
+        return bad('mailFrom', from ? 'status.mail.err.from' : 'status.mail.err.from_user');
+      return '';
+    };
+    mailSave.onclick = async () => {
+      const m = $('mailMsg');
+      const err = validateMail();
+      if (err){ m.textContent = err; m.style.color = '#d93025'; return; }
+      mailSave.disabled = true;
+      m.textContent = '';
+      let ok = false;
+      try { ok = await save(); } catch (_){}
+      mailSave.disabled = false;
+      $('mailPass').value = '';   // typed password is now stored
+      m.textContent = ok ? t('status.mail.saved') : t('status.mail.test.fail');
+      m.style.color = ok ? '#188038' : '#d93025';
+    };
+    mailTest.onclick = async () => {
+      const m = $('mailMsg');
+      const err = validateMail();
+      if (err){ m.textContent = err; m.style.color = '#d93025'; return; }
+      mailTest.disabled = true; mailSave.disabled = true;
+      m.textContent = t('status.mail.testing');
+      m.style.color = '#1a73e8';
+      let ok = false;
+      try {
+        // Save first so the test uses exactly what is on screen, then
+        // ask the dongle to send through the stored settings.
+        await save();
+        $('mailPass').value = '';
+        const r = await fetch('/api/mail/test', {method: 'POST'});
+        const d = await r.json().catch(() => ({}));
+        ok = !!d.ok;
+      } catch (_){}
+      mailTest.disabled = false; mailSave.disabled = false;
+      m.textContent = ok ? t('status.mail.test.sent') : t('status.mail.test.fail');
+      m.style.color = ok ? '#188038' : '#d93025';
+    };
+  }
+  if (fwPick && !fwPick.onclick){
+    fwPick.onclick = () => fwFile.click();
+    fwFile.onchange = () => {
+      const f = fwFile.files[0];
+      fwFileName.textContent = f ? f.name + ' (' + Math.round(f.size/1024) + ' KB)' : '';
+      fwUpload.disabled = !f;
+      fwMsg.textContent = '';
+    };
+    fwUpload.onclick = () => {
+      const f = fwFile.files[0];
+      if (!f) return;
+      if (!confirm(t('status.fw.confirm'))) return;
+      fwUpload.disabled = true;
+      fwPick.disabled   = true;
+      fwCheck.disabled  = true;
+      // XHR over fetch(): we want upload-progress events, which
+      // the fetch API does not expose.
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/firmware', true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const pct = Math.round(e.loaded * 100 / e.total);
+        fwMsg.textContent = t('status.fw.uploading', {pct: pct});
+        fwMsg.style.color = '#1a73e8';
+      };
+      xhr.onload = () => {
+        let d = {}; try { d = JSON.parse(xhr.responseText); } catch (_){}
+        if (xhr.status >= 200 && xhr.status < 300 && d.ok){
+          fwMsg.textContent = t('status.fw.done');
+          fwMsg.style.color = '#e8710a';
+          stopPolling();
+        } else {
+          fwMsg.textContent = t('status.fw.error',
+            {msg: d.message || xhr.statusText || 'HTTP ' + xhr.status});
+          fwMsg.style.color = '#d93025';
+          fwUpload.disabled = false;
+          fwPick.disabled   = false;
+          fwCheck.disabled  = false;
+        }
+      };
+      xhr.onerror = () => {
+        fwMsg.textContent = t('status.fw.error', {msg: 'Network error'});
+        fwMsg.style.color = '#d93025';
+        fwUpload.disabled = false;
+        fwPick.disabled   = false;
+        fwCheck.disabled  = false;
+      };
+      xhr.send(f);
+    };
+    fwCheck.onclick = async () => {
+      fwCheck.disabled  = true;
+      fwUpload.disabled = true;
+      fwPick.disabled   = true;
+      fwUpdateInFlight  = true;
+      // Hide any leftover rollback banner from a *previous* failed
+      // attempt — the click forces a retry, so the old "boot did
+      // not survive" line is no longer applicable from this moment.
+      const fwFailedEl = $('fwFailed');
+      if (fwFailedEl) fwFailedEl.style.display = 'none';
+      fwMsg.textContent = t('status.fw.checking');
+      fwMsg.style.color = '#1a73e8';
+      // Tracks whether install reached the reboot-imminent state.
+      // When set, finally{} keeps fwUpdateInFlight true so a late
+      // /api/status reply (still showing last_failed_ota = the
+      // version we just installed) cannot re-light the rollback
+      // banner between stopPolling() and the user's reload.
+      let rebooting = false;
+      try {
+        // Phase 1: read-only manifest check (~1-2 s). The user gets
+        // immediate feedback ("none" / "version X gefunden") before
+        // we commit to the long download.
+        const rc = await fetch('/api/firmware/check', {method: 'POST'});
+        const dc = await rc.json().catch(() => ({}));
+        if (!rc.ok || !dc.ok){
+          fwMsg.textContent = t('status.fw.check.error',
+            {msg: dc.message || rc.statusText});
+          fwMsg.style.color = '#d93025';
+          return;
+        }
+        if (!dc.available){
+          fwMsg.textContent = t('status.fw.check.none',
+            {version: dc.current_version || s.firmware_version});
+          fwMsg.style.color = '#666';
+          return;
+        }
+
+        // Phase 2: install. Show the "wird installiert" line during
+        // the ~30 s download so the message reflects what is actually
+        // happening, instead of "Prüfe…" freezing for half a minute.
+        fwMsg.textContent = t('status.fw.check.found',
+          {version: dc.new_version});
+        fwMsg.style.color = '#1a73e8';
+        const ri = await fetch('/api/firmware/install', {method: 'POST'});
+        const di = await ri.json().catch(() => ({}));
+        if (ri.ok && di.ok && di.installed){
+          fwMsg.textContent = t('status.fw.check.installed',
+            {version: di.new_version});
+          fwMsg.style.color = '#e8710a';
+          rebooting = true;
+          stopPolling();
+          // The browser is now stuck on the pre-reboot HTML and
+          // would never see the marker get cleared from the next
+          // boot's /api/status. Hide the banner ourselves so the
+          // page does not have to be reloaded just to look right.
+          if (fwFailedEl) fwFailedEl.style.display = 'none';
+          return;
+        }
+        fwMsg.textContent = t('status.fw.check.error',
+          {msg: di.message || ri.statusText});
+        fwMsg.style.color = '#d93025';
+      } catch (_){
+        fwMsg.textContent = t('status.fw.check.error', {msg: 'Network error'});
+        fwMsg.style.color = '#d93025';
+      } finally {
+        if (!rebooting){
+          fwUpdateInFlight  = false;
+          fwCheck.disabled  = false;
+          fwPick.disabled   = false;
+          fwUpload.disabled = !fwFile.files[0];
+        }
+      }
+    };
+  }
+}
+
+// --- views: SIP wizard entry ---------------------------------------
+
+function renderSipEntry(){
+  app.innerHTML = ''
+    + '<section>'
+    + '<div class="crumb"><a href="#/">' + esc(t('back.status')) + '</a></div>'
+    + '<h2>' + esc(t('sip.entry.title')) + '</h2>'
+    + '<p class="muted">' + esc(t('sip.entry.intro')) + '</p>'
+    + '<a class="choice" href="#/setup/sip/fritzbox">'
+    +   '<strong>' + esc(t('sip.entry.fritzbox')) + '</strong>'
+    +   esc(t('sip.entry.fritzbox.desc'))
+    + '</a>'
+    + '<a class="choice" href="#/setup/sip/provider">'
+    +   '<strong>' + esc(t('sip.entry.provider')) + '</strong>'
+    +   esc(t('sip.entry.provider.desc'))
+    + '</a>'
+    + '<a class="choice" href="#/setup/sip/manual">'
+    +   '<strong>' + esc(t('sip.entry.manual')) + '</strong>'
+    +   esc(t('sip.entry.manual.desc'))
+    + '</a>'
+    + '</section>';
+}
+
+// --- views: Fritz!Box path -----------------------------------------
+
+function renderSipFritzbox(){
+  app.innerHTML = ''
+    + '<section>'
+    + '<div class="crumb"><a href="#/setup/sip">' + esc(t('back.sip')) + '</a></div>'
+    + '<h2>' + esc(t('sip.fb.title')) + '</h2>'
+    + '<p class="muted">' + esc(t('sip.fb.intro')) + '</p>'
+    + '<form id="fbForm">'
+    + '<label>' + esc(t('sip.fb.host'))
+    + '<input type="text" name="fritz_host" value="fritz.box"></label>'
+    + '<label>' + esc(t('sip.fb.user'))
+    + ' <span class="muted">' + esc(t('sip.fb.user.hint')) + '</span>'
+    + '<input type="text" name="fritz_user" autocomplete="off"></label>'
+    + '<label>' + esc(t('sip.fb.pass'))
+    + '<input type="password" name="fritz_pass" required autocomplete="off"></label>'
+    + '<p style="margin-top:.8rem">'
+    + '<button type="submit" class="btn-primary">' + esc(t('sip.fb.submit')) + '</button>'
+    + '<span id="fbMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></form></section>';
+  $('fbForm').addEventListener('submit', onFritzboxSubmit);
+}
+
+async function onFritzboxSubmit(e){
+  e.preventDefault();
+  const msg = $('fbMsg');
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  msg.textContent = t('sip.fb.working');
+  msg.style.color = '#888';
+  const r = await postForm('/api/fritzbox-setup', e.target);
+  if (r.ok){
+    const n = r.data.internal_number;
+    msg.textContent = n ? t('sip.fb.done.withnum', {n}) : t('sip.fb.done');
+    msg.style.color = '#188038';
+    setTimeout(() => location.hash = '#/', 800);
+    return;
+  }
+  if (r.data && r.data.two_factor){
+    e.target.querySelector('input[name=fritz_pass]').value = '';
+    msg.innerHTML = esc(t('sip.fb.2fa.instructions', {hints: ''}))
+                  + render2FAInstructions(r.data.methods || '');
+    msg.style.color = '#e8710a';
+    await poll2FA(msg, btn);
+    return;
+  }
+  msg.textContent = t('sip.fb.error', {msg: r.data.message || r.statusText});
+  msg.style.color = '#d93025';
+  btn.disabled = false;
+}
+
+function render2FAInstructions(methods){
+  const hints = [];
+  if (/\bbutton\b/.test(methods)) hints.push(esc(t('sip.fb.2fa.button')));
+  const dtmf = methods.match(/dtmf;(\S+)/);
+  if (dtmf) hints.push(t('sip.fb.2fa.dtmf', {seq: '<code>' + esc(dtmf[1]) + '</code>'}));
+  return hints.length ? hints.join(' ' + esc('oder') + ' ') : '';
+}
+
+async function poll2FA(msgEl, btn){
+  const deadline = Date.now() + 130 * 1000;
+  while (Date.now() < deadline){
+    await new Promise(r => setTimeout(r, 2000));
+    const r = await fetchJson('/api/fritzbox-2fa-status');
+    if (!r) continue;
+    if (r.ok){
+      const n = r.internal_number;
+      msgEl.textContent = n ? t('sip.fb.done.withnum', {n}) : t('sip.fb.done');
+      msgEl.style.color = '#188038';
+      setTimeout(() => location.hash = '#/', 800);
+      return;
+    }
+    if (r.terminal){
+      msgEl.textContent = t('sip.fb.error', {msg: r.message || t('sip.fb.2fa.cancelled')});
+      msgEl.style.color = '#d93025';
+      btn.disabled = false;
+      return;
+    }
+  }
+  msgEl.textContent = t('sip.fb.2fa.timeout');
+  msgEl.style.color = '#d93025';
+  btn.disabled = false;
+}
+
+// --- views: provider preset ----------------------------------------
+
+function renderSipProvider(){
+  let opts = '<option value="">—</option>';
+  for (const [k, p] of Object.entries(PROVIDERS)){
+    opts += '<option value="' + esc(k) + '">' + esc(p.name) + '</option>';
+  }
+  app.innerHTML = ''
+    + '<section>'
+    + '<div class="crumb"><a href="#/setup/sip">' + esc(t('back.sip')) + '</a></div>'
+    + '<h2>' + esc(t('sip.prov.title')) + '</h2>'
+    + '<p class="muted">' + esc(t('sip.prov.intro')) + '</p>'
+    + '<form id="provForm">'
+    + '<label>' + esc(t('sip.prov.provider'))
+    + '<select name="provider" id="provSelect" required>' + opts + '</select></label>'
+    + '<div id="provHint" class="muted" style="margin:.5rem 0"></div>'
+    + '<label>' + esc(t('sip.prov.user'))
+    + '<input type="text" name="sip_user" required></label>'
+    + '<div id="provPassBlock"><label>' + esc(t('sip.prov.pass'))
+    + '<input type="password" name="sip_pass" id="provPass" required autocomplete="off"></label></div>'
+    + '<p style="margin-top:.8rem">'
+    + '<button type="submit" class="btn-primary">' + esc(t('sip.prov.submit')) + '</button>'
+    + '<span id="provMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></form></section>';
+  $('provSelect').addEventListener('change', onProviderChange);
+  $('provForm').addEventListener('submit', onProviderSubmit);
+}
+
+function onProviderChange(e){
+  const key = e.target.value;
+  const p = PROVIDERS[key];
+  $('provHint').textContent = p ? p.userHint : '';
+  // Anonymous providers (Telekom) need no password — hide the field and
+  // drop its "required" so the form submits with just the phone number.
+  const anon = !!(p && p.anonymous);
+  $('provPassBlock').style.display = anon ? 'none' : '';
+  const pass = $('provPass');
+  pass.required = !anon;
+  if (anon) pass.value = '';
+}
+
+async function onProviderSubmit(e){
+  e.preventDefault();
+  const msg = $('provMsg');
+  const btn = e.target.querySelector('button');
+  const key = $('provSelect').value;
+  const p = PROVIDERS[key];
+  if (!p){
+    msg.textContent = t('sip.prov.error', {msg: '—'});
+    msg.style.color = '#d93025';
+    return;
+  }
+  const host = p.host;
+  // Build the POST body ourselves since the preset supplies host/port.
+  btn.disabled = true;
+  msg.textContent = t('sip.fb.working');
+  msg.style.color = '#888';
+  // A preset defines a *complete* SIP profile. Send every expert field
+  // — including explicit resets for the ones the preset doesn't use —
+  // so a prior manual/other-provider setup can't leave stale values
+  // behind that survive the merge and break the new registration (#363).
+  const body = new URLSearchParams();
+  body.append('sip_host', host);
+  body.append('sip_port', String(p.port));
+  body.append('sip_user', e.target.sip_user.value);
+  // Anonymous presets clear the stored password (sip_anon marker) instead
+  // of sending one; others send the typed password. sip_auth_user comes
+  // from the preset (e.g. anonymous@t-online.de), empty = use SIP user.
+  if (p.anonymous){
+    body.append('sip_anon', '1');
+  } else {
+    body.append('sip_pass', e.target.sip_pass.value);
+  }
+  body.append('sip_transport', p.transport || 'udp');
+  body.append('sip_auth_user', p.authUser || '');
+  body.append('sip_outbound', '');
+  body.append('sip_realm', '');
+  // STUN server for RTP NAT discovery — set per preset (empty = off), so
+  // switching providers also clears a previous provider's STUN server.
+  body.append('sip_stun', p.stun || '');
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: body.toString(),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && d.ok){
+      msg.textContent = t('sip.prov.done');
+      msg.style.color = '#188038';
+      setTimeout(() => location.hash = '#/', 800);
+      return;
+    }
+    msg.textContent = t('sip.prov.error', {msg: d.message || r.statusText});
+    msg.style.color = '#d93025';
+    btn.disabled = false;
+  } catch (_){
+    msg.textContent = t('sip.prov.error', {msg: 'Network error'});
+    msg.style.color = '#d93025';
+    btn.disabled = false;
+  }
+}
+
+// --- views: manual (expert) ----------------------------------------
+
+async function renderSipManual(){
+  const s = await fetchJson('/api/status');
+  const sip = s ? s.sip : {};
+  const host  = sip.host  || '';
+  // 0 means "auto" — let the firmware pick via DNS-SRV or transport default.
+  const port  = sip.port ? String(sip.port) : '';
+  const user  = sip.user  || '';
+  const tr    = sip.transport || 'udp';
+  const au    = sip.auth_user || '';
+  const outb  = sip.outbound  || '';
+  const realm = sip.realm     || '';
+  const stun  = sip.stun      || '';
+  // No stored password ⇒ pre-tick "anonymous", so the saved state stays
+  // visible on reload (the password itself is never sent to the client).
+  const passSet = !!sip.pass_set;
+  // Local bind ports (status always returns the effective value, never 0).
+  const lport = sip.local_port ? String(sip.local_port) : '';
+  const rport = sip.rtp_port   ? String(sip.rtp_port)   : '';
+  const lportShown = sip.local_port || 15060;
+  const rportShown = sip.rtp_port   || 16000;
+  const opt = (value, cur, label) =>
+    '<option value="' + esc(value) + '"' + (value === cur ? ' selected' : '') + '>'
+    + esc(label) + '</option>';
+  app.innerHTML = ''
+    + '<section>'
+    + '<div class="crumb"><a href="#/setup/sip">' + esc(t('back.sip')) + '</a></div>'
+    + '<h2>' + esc(t('sip.manual.title')) + '</h2>'
+    + '<p class="muted">' + esc(t('sip.manual.intro')) + '</p>'
+    + '<form id="manForm">'
+    + '<label>' + esc(t('sip.manual.host'))
+    + '<input type="text"   name="sip_host" value="' + esc(host) + '"></label>'
+    + '<label>' + esc(t('sip.manual.port'))
+    + '<input type="number" name="sip_port" min="0" max="65535" value="' + esc(port) + '"></label>'
+    + '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +   esc(t('sip.manual.port.hint')) + '</p>'
+    + '<label>' + esc(t('sip.manual.user'))
+    + '<input type="text"   name="sip_user" value="' + esc(user) + '"></label>'
+    + '<label>' + esc(t('sip.manual.pass'))
+    + '<input type="password" name="sip_pass" id="sipPass" autocomplete="off"></label>'
+    + '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +   esc(t('sip.manual.pass.hint')) + '</p>'
+    + '<label style="display:flex;align-items:center;gap:.4rem;font-weight:normal">'
+    +   '<input type="checkbox" name="sip_anon" id="sipAnon" style="width:auto"'
+    +     (passSet ? '' : ' checked') + '>'
+    +   '<span>' + esc(t('sip.manual.anon')) + '</span></label>'
+    + '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +   esc(t('sip.manual.anon.hint')) + '</p>'
+    + '<details style="margin:1rem 0">'
+    +   '<summary style="cursor:pointer;color:#008f7a;font-size:.9rem">'
+    +     esc(t('sip.manual.advanced')) + '</summary>'
+    +   '<label>' + esc(t('sip.manual.transport'))
+    +     '<select name="sip_transport">'
+    +       opt('udp', tr, 'UDP') + opt('tcp', tr, 'TCP') + opt('tls', tr, 'TLS')
+    +     '</select></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.transport.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.auth_user'))
+    +     '<input type="text" name="sip_auth_user" value="' + esc(au) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.auth_user.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.outbound'))
+    +     '<input type="text" name="sip_outbound" value="' + esc(outb) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.outbound.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.realm'))
+    +     '<input type="text" name="sip_realm" value="' + esc(realm) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.realm.hint')) + '</p>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.srtp.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.local_port'))
+    +     '<input type="number" name="sip_local_port" min="1" max="65535" value="' + esc(lport) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.local_port.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.rtp_port'))
+    +     '<input type="number" name="rtp_port" min="1" max="65535" value="' + esc(rport) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.rtp_port.hint')) + '</p>'
+    +   '<label>' + esc(t('sip.manual.stun'))
+    +     '<input type="text" name="sip_stun" value="' + esc(stun) + '"></label>'
+    +   '<p class="muted" style="font-size:.75rem;margin:.2rem 0 .6rem">'
+    +     esc(t('sip.manual.stun.hint')) + '</p>'
+    +   '<div class="muted" style="font-size:.75rem;margin:.6rem 0;border-left:3px solid #ccc;padding-left:.6rem">'
+    +     '<strong>' + esc(t('sip.manual.fwd.title')) + '</strong><br>'
+    +     esc(t('sip.manual.fwd.body', {sip: lportShown, rtp: rportShown}))
+    +   '</div>'
+    + '</details>'
+    + '<p style="margin-top:.8rem">'
+    + '<button type="submit" class="btn-primary">' + esc(t('sip.manual.submit')) + '</button>'
+    + '<span id="manMsg" class="muted" style="margin-left:.6rem"></span>'
+    + '</p></form></section>';
+  // "Anonymous" disables the password field: a disabled field is left
+  // out of the form body, so the backend sees the explicit sip_anon
+  // marker (clear password) rather than an empty sip_pass (keep current).
+  const anon = $('sipAnon'), pass = $('sipPass');
+  // Mirror the pre-ticked state: a passwordless account renders with the
+  // password field already disabled.
+  pass.disabled = anon.checked;
+  anon.addEventListener('change', () => {
+    pass.disabled = anon.checked;
+    if (anon.checked) pass.value = '';
+  });
+  $('manForm').addEventListener('submit', onManualSubmit);
+}
+
+async function onManualSubmit(e){
+  e.preventDefault();
+  const msg = $('manMsg');
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  msg.textContent = t('sip.fb.working');
+  msg.style.color = '#888';
+  const r = await postForm('/api/config', e.target);
+  if (r.ok){
+    msg.textContent = t('sip.manual.done');
+    msg.style.color = '#188038';
+    setTimeout(() => location.hash = '#/', 800);
+    return;
+  }
+  msg.textContent = t('sip.manual.error', {msg: r.data.message || r.statusText});
+  msg.style.color = '#d93025';
+  btn.disabled = false;
+}
+
+// --- views: token wizard -------------------------------------------
+
+async function renderToken(){
+  const s = await fetchJson('/api/status');
+  const set = !!(s && s.phoneblock.token_set);
+  app.innerHTML = ''
+    + '<section>'
+    + '<div class="crumb"><a href="#/">' + esc(t('back.status')) + '</a></div>'
+    + '<h2>' + esc(t('token.title')) + '</h2>'
+    + '<p class="muted">' + esc(t('token.intro')) + '</p>'
+    + '<p class="muted">' + esc(t('token.how'))   + '</p>'
+    + '<p class="muted">'
+    + (set ? esc(t('token.current.set')) : esc(t('token.current.missing')))
+    + '</p>'
+    + '<p style="margin-top:.8rem">'
+    + '<a href="/register-start" class="btn-primary">' + esc(t('token.submit')) + '</a>'
+    + '</p></section>';
+}
+
+// --- announcement (G.711 A-law, 8 kHz mono) ------------------------
+
+const ANN_MAX_SECONDS = 30;
+
+// ITU-T G.711 A-law encode: 16-bit PCM → 8-bit A-law.
+function pcm16ToAlaw(sample){
+  const sign = (sample >> 8) & 0x80;
+  if (sign) sample = -sample;
+  if (sample > 32635) sample = 32635;
+  let exponent, mantissa;
+  if (sample >= 256){
+    exponent = 7;
+    for (let mask = 0x4000; (sample & mask) === 0 && exponent > 1; mask >>= 1) exponent--;
+    mantissa = (sample >> (exponent + 3)) & 0x0f;
+  } else {
+    exponent = 0;
+    mantissa = (sample >> 4) & 0x0f;
+  }
+  return (sign | (exponent << 4) | mantissa) ^ 0x55;
+}
+
+function alawToPcm16(alaw){
+  alaw ^= 0x55;
+  const sign = alaw & 0x80;
+  const exponent = (alaw >> 4) & 0x07;
+  const mantissa = alaw & 0x0f;
+  let sample;
+  if (exponent === 0){
+    sample = (mantissa << 4) + 8;
+  } else {
+    sample = ((mantissa << 4) + 0x108) << (exponent - 1);
+  }
+  return sign ? -sample : sample;
+}
+
+// Wrap a PCM16 mono 8 kHz sample array into a Blob the browser's
+// <audio> element plays natively.
+function wavBlobFromPcm16(pcm){
+  const dataBytes = pcm.length * 2;
+  const buf = new ArrayBuffer(44 + dataBytes);
+  const v = new DataView(buf);
+  // RIFF header
+  v.setUint32(0,  0x52494646, false); // "RIFF"
+  v.setUint32(4,  36 + dataBytes, true);
+  v.setUint32(8,  0x57415645, false); // "WAVE"
+  // fmt chunk
+  v.setUint32(12, 0x666d7420, false); // "fmt "
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);           // PCM
+  v.setUint16(22, 1, true);           // mono
+  v.setUint32(24, 8000, true);        // rate
+  v.setUint32(28, 16000, true);       // byte rate = 8000 * 2
+  v.setUint16(32, 2, true);           // block align
+  v.setUint16(34, 16, true);          // bits
+  v.setUint32(36, 0x64617461, false); // "data"
+  v.setUint32(40, dataBytes, true);
+  for (let i = 0; i < pcm.length; i++) v.setInt16(44 + i * 2, pcm[i], true);
+  return new Blob([buf], {type: 'audio/wav'});
+}
+
+// Decode any browser-supported audio file, mix to mono, resample to
+// 8 kHz via OfflineAudioContext, then A-law-encode. Returns a
+// Uint8Array of raw A-law bytes ready to POST to /api/announcement.
+async function convertToAlaw(file){
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let decoded;
+  try {
+    decoded = await ctx.decodeAudioData(await file.arrayBuffer());
+  } catch (e){
+    ctx.close();
+    throw new Error(t('status.ann.upload.decode_fail'));
+  }
+  const lengthSamples = Math.ceil(decoded.duration * 8000);
+  if (decoded.duration > ANN_MAX_SECONDS){
+    ctx.close();
+    throw new Error(t('status.ann.upload.toolong', {s: ANN_MAX_SECONDS}));
+  }
+  const off = new OfflineAudioContext(1, lengthSamples, 8000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const rendered = await off.startRendering();
+  ctx.close();
+  const f32 = rendered.getChannelData(0);
+  const out = new Uint8Array(f32.length);
+  for (let i = 0; i < f32.length; i++){
+    let s = Math.round(Math.max(-1, Math.min(1, f32[i])) * 32767);
+    out[i] = pcm16ToAlaw(s);
+  }
+  return out;
+}
+
+let annAudio = null;
+let annMsgTimer = null;
+function setAnnMsg(text, color){
+  const el = $('annMsg');
+  if (annMsgTimer){ clearTimeout(annMsgTimer); annMsgTimer = null; }
+  el.textContent = text || '';
+  el.style.color = color || '#888';
+}
+
+function wireAnnouncement(){
+  const playBtn  = $('annPlay');
+  const stopBtn  = $('annStop');
+  const resetBtn = $('annReset');
+  const fileIn   = $('annFile');
+  const uploadBtn = $('annUpload');
+
+  playBtn.onclick = async () => {
+    setAnnMsg('');
+    try {
+      const r = await fetch('/api/announcement');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const alaw = new Uint8Array(await r.arrayBuffer());
+      const pcm = new Int16Array(alaw.length);
+      for (let i = 0; i < alaw.length; i++) pcm[i] = alawToPcm16(alaw[i]);
+      const url = URL.createObjectURL(wavBlobFromPcm16(pcm));
+      if (annAudio){ annAudio.pause(); URL.revokeObjectURL(annAudio.src); }
+      annAudio = new Audio(url);
+      annAudio.onended = () => {
+        URL.revokeObjectURL(url);
+        stopBtn.style.display = 'none';
+        playBtn.style.display = '';
+      };
+      annAudio.play();
+      playBtn.style.display = 'none';
+      stopBtn.style.display = '';
+    } catch (e){
+      setAnnMsg(t('status.ann.upload.error', {msg: e.message || 'network'}), '#d93025');
+    }
+  };
+  stopBtn.onclick = () => {
+    if (annAudio){ annAudio.pause(); annAudio.currentTime = 0; }
+    stopBtn.style.display = 'none';
+    playBtn.style.display = '';
+  };
+
+  fileIn.onchange = () => { uploadBtn.disabled = !fileIn.files.length; };
+
+  uploadBtn.onclick = async () => {
+    if (!fileIn.files.length) return;
+    const file = fileIn.files[0];
+    uploadBtn.disabled = true;
+    setAnnMsg(t('status.ann.upload.converting'), '#888');
+    let alaw;
+    try {
+      alaw = await convertToAlaw(file);
+    } catch (e){
+      setAnnMsg(t('status.ann.upload.error', {msg: e.message}), '#d93025');
+      uploadBtn.disabled = false;
+      return;
+    }
+    setAnnMsg(t('status.ann.upload.uploading'), '#888');
+    try {
+      const r = await fetch('/api/announcement', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/octet-stream'},
+        body: alaw,
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok) throw new Error(d.message || ('HTTP ' + r.status));
+      setAnnMsg(t('status.ann.upload.done', {kb: Math.round(alaw.length / 1024)}), '#188038');
+      fileIn.value = '';
+      annMsgTimer = setTimeout(() => setAnnMsg(''), 4000);
+      refreshAll();
+    } catch (e){
+      setAnnMsg(t('status.ann.upload.error', {msg: e.message || 'network'}), '#d93025');
+    }
+    uploadBtn.disabled = !fileIn.files.length;
+  };
+
+  resetBtn.onclick = async () => {
+    if (!confirm(t('status.ann.reset.confirm'))) return;
+    resetBtn.disabled = true;
+    setAnnMsg('');
+    try {
+      const r = await fetch('/api/announcement/reset', {method: 'POST'});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      refreshAll();
+    } catch (e){
+      setAnnMsg(t('status.ann.upload.error', {msg: e.message || 'network'}), '#d93025');
+    }
+    resetBtn.disabled = false;
+  };
+}
+
+// --- language switcher ---------------------------------------------
+
+// Shared by the footer selector (reachable from every route) and the one in
+// the region section — same setting, one code path.
+function setUiLang(lang){
+  // The UI language is a DEVICE setting — it also drives the status mail
+  // and the answer-bot announcement. POST it; the firmware localizes those
+  // and downloads the matching UI pack, which the dongle then serves at
+  // /api/i18n/ui. Re-render now (English until the pack arrives), then poll
+  // the device for the new pack.
+  LANG = lang;
+  document.documentElement.lang = lang;
+  const foot = document.getElementById('langSelect');
+  if (foot) foot.value = lang;
+  try {
+    fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({ ui_lang: lang }).toString(),
+    }).catch(() => {});
+  } catch (_){}
+  delete I18N[lang];                 // force reload of the new locale
+  // While the device downloads the new pack it serves the embedded English
+  // pack (which carries the i18n.loading/unavailable strings), so start the
+  // poll only after loadUiPack has populated I18N[lang] — then the status
+  // label resolves to real text instead of the raw key on the first switch.
+  loadUiPack(lang).then(() => { route(); awaitUiPack(lang); });
+}
+
+{
+  const sel = document.getElementById('langSelect');
+  if (sel){
+    sel.value = LANG;
+    sel.addEventListener('change', () => setUiLang(sel.value));
+  }
+  document.documentElement.lang = LANG;
+}
+
+// --- boot ----------------------------------------------------------
+
+// The UI language comes from the device (ui_lang); load it + its UI pack from
+// the dongle itself (same-origin, no CDN), then render. On any failure t()
+// falls back to the embedded English pack the device serves.
+loadDeviceLang().then(route);
+</script>
+</body>
+</html>

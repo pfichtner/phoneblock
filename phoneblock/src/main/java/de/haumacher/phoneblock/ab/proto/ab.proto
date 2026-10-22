@@ -62,11 +62,14 @@ message UpdateAnswerBot extends BotRequest {
 	 */
 	int minVotes;
 	
-	/** 
-	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected. 
+	/**
+	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected.
 	 */
 	bool wildcards;
-	
+
+	/** Whether to accept calls from local phones (numbers starting with *). */
+	bool acceptLocal;
+
 }
 
 /** Switches the answer bot on. */
@@ -132,10 +135,13 @@ message AnswerbotInfo {
 	 */
 	int minVotes;
 	
-	/** 
-	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected. 
+	/**
+	 * Whether to block whole number ranges, when a great density of nearby SPAM numbers is detected.
 	 */
 	bool wildcards;
+
+	/** Whether to accept calls from local phones (numbers starting with *). */
+	bool acceptLocal;
 
 	/** Whether the bot has sucessfully registered (can accept calls). */
 	bool registered;
@@ -184,12 +190,38 @@ message AnswerbotInfo {
 	/** The password for DynDNS registration of the box. */
 	@Nullable
 	string dyndnsPassword;
+	
+	/** The retention period for automatic call cleanup (NEVER, WEEK, MONTH, QUARTER, YEAR). */
+	RetentionPeriod retentionPeriod;
 }
 
 /** Clears the calls answered so far. */
 message ClearCallList extends BotRequest {
 }
 
+/** Sets the retention policy for automatic call cleanup. */
+message SetRetentionPolicy extends BotRequest {
+	/** The retention period (NEVER, WEEK, MONTH, QUARTER, YEAR). */
+	RetentionPeriod period;
+}
+
+/** Specification when old calls should be deleted automatically. */
+enum RetentionPeriod {
+    /** Never delete calls automatically */
+    NEVER;
+    
+    /** Delete calls older than one week */
+    WEEK;
+    
+    /** Delete calls older than one month */
+    MONTH;
+    
+    /** Delete calls older than three months */
+    QUARTER;
+    
+    /** Delete calls older than one year */
+    YEAR;
+}
 
 /** Result of the {@link de.haumacher.phoneblock.ab.ListABServlet}. */
 message ListAnswerbotResponse {

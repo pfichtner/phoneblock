@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html th:with="previewImage='/assets/img/dongle/phoneblock-dongle-preview.png'">
+<head th:replace="~{fragments/page :: head(titleKey='page.dongle.title', descriptionKey='page.dongle.description', titleText=null, descriptionText=null)}"></head>
+
+<body th:dir="${currentLang.direction}">
+<div th:replace="~{fragments/page :: header(location=${currentPage})}"></div>
+
+<section class="section">
+	<div class="content">
+		<h1 data-tx="t0192:fa04cef1">PhoneBlock-dongle <sup><span class="tag is-info is-medium ml-2">Ny</span></sup></h1>
+
+		<p class="subtitle" data-tx="t0095:dab19814">En intelligent telefonsvarer i form av en IP-telefon. Den er på størrelse med en tommel, kobles til ruterens USB-port, registreres som en ekstra SIP-telefon - og fanger opp kommersielle anrop før den faktiske telefonen ringer. Fungerer uavhengig av rutermodell, selv uten Fritz!</p>
+		
+		<p class="container">
+			<img th:src="@{/assets/img/dongle/phoneblock-dongle-800.png}"/>
+		</p>		
+
+		<h2 data-tx="t0004:6b104c7a">Ideen i én setning</h2>
+
+		<p data-tx="t0081:4d04d687">PhoneBlock-dongelen logger seg på ruteren din som en ekstra IP-telefon. Hver gang en samtale kommer inn, spør den lynraskt PhoneBlock-databasen: <em>"Er dette spam?"</em> Hvis ja, besvarer den selv samtalen, spiller av en kort kunngjøring om ønskelig og legger på igjen. Den virkelige telefonen din har ikke engang ringt i det øyeblikket. I motsetning til <a th:href="@{/anrufbeantworter}">sky-telefonsvareren</a> foregår all samtalebehandling lokalt hjemme hos deg.</p>
+
+		<div class="columns is-centered mt-5">
+			<div class="column is-one-quarter has-text-centered">
+				<p><span class="icon is-large has-text-info"><i class="fas fa-phone-volume fa-3x"></i></span></p>
+				<h4 data-tx="t0006:fbca4eec">Første samtale kommer inn</h4>
+				<p data-tx="t0097:2787a701">Ruteren signaliserer anropet til alle registrerte telefoner - inkludert PhoneBlock-donglen. De "ekte" telefonene kan konfigureres med en ringetidsforsinkelse på 3-5 sekunder.</p>
+			</div>
+			<div class="column is-one-quarter has-text-centered">
+				<p><span class="icon is-large has-text-warning"><i class="fas fa-bolt fa-3x"></i></span></p>
+				<h4 data-tx="t0008:acac085a">2. Blitsjekk</h4>
+				<p data-tx="t0098:1dec8705">PhoneBlock-donglen spør PhoneBlock lynraskt for å se om nummeret er kjent for å være søppelpost. Forespørselen kjøres via kryptert HTTPS og overfører kun en hash av nummeret. Anrop fra kontakter i telefonboken din blir ikke engang sjekket - de forlater aldri hjemmenettverket ditt.</p>
+			</div>
+			<div class="column is-one-quarter has-text-centered">
+				<p><span class="icon is-large has-text-danger"><i class="fas fa-ban fa-3x"></i></span></p>
+				<h4 data-tx="t0010:be667d0f">3. Bli kvitt den</h4>
+				<p data-tx="t0099:2a38220a">Hvis nummeret er spam, svarer PhoneBlock-donglen, spiller av en melding og legger på. Telefonen i stuen forblir stille. Hvis nummeret ikke er kjent som spam, gjør PhoneBlock-donglen ingenting - samtalen går gjennom som normalt.</p>
+			</div>
+		</div>
+
+		<h2 data-tx="t0231:7efc6f3c">Universelt anvendelig</h2>
+
+		<div class="notification is-success">
+			<p data-tx="t0123:3f292a9e">Dongelen kjører <b>stabilt med alle Fritz!Box-rutere</b> uavhengig av telefonleverandør (den skal også fungere med virkelig gamle Fritz!Box-modeller - men selvfølgelig uten garanti).</p>
+		</div>
+
+		<div class="notification is-success">
+			<p data-tx="t0229:8390c45a">Dongelen kjører <b>stabilt på alle Deutsche Telekom-tilkoblinger</b> uavhengig av hvilken ruter du bruker.</p>
+		</div>
+
+		<p data-tx="t0224:158c9a29">Dongelen <b>fungerer også uten en Fritz!Box-ruter</b>, men minst ett av de to punktene må være oppfylt:</p>
+		<ul>
+		<li data-tx="t0225:b43acc79">Ruteren din lar deg registrere en VOIP-telefon (de fleste moderne rutere kan gjøre dette - men "EasyBox" fra Vodafone, for eksempel, kan ikke det). Det er best å sjekke bruksanvisningen for ruteren din på forhånd.</li>
+		<li data-tx="t0226:98a33bc2">Hvis telefonleverandøren din tillater direkte registrering av en VOIP-telefon direkte til infrastrukturen - da spiller ikke rutermodellen noen rolle. (Deutsche Telekom tillater dette, Vodafone gjør det for eksempel ikke. Det er best å spørre leverandøren din).</li>
+		</ul> 
+
+		<div class="notification is-info">
+			<p data-tx="t0230:12c794d9">Dongelen fungerer <b>ikke på Vodafone-tilkoblinger</b> i kombinasjon med en EasyBox fra Vodafone.</p>
+		</div>
+		
+		<p data-tx="t0227:9c63c692">Hvis du har konfigurert donglen - spesielt i kombinasjon med en ruter som ikke er Fritz!Box, eller en "historisk" Fritz!Box-modell - kan du skrive en <a href="#tester">erfaringsrapport</a> slik at denne hjelpen kan forbedres.</p>
+
+		<p class="subtitle mt-6" data-tx="t0124:bd004e4f">Det er her det blir praktisk: instruksjonene veileder deg trinn for trinn gjennom bestilling og oppsett - rundt €10 maskinvare, en engangsinnsats på noen få minutter.</p>
+
+		<noscript>
+			<div class="notification is-danger">
+				<p data-tx="t0126:ba65a265">Denne siden krever JavaScript. Vennligst aktiver det i nettleseren din eller følg <a href="https://github.com/haumacher/phoneblock/blob/master/phoneblock-dongle/GETTING_STARTED.md">Instruksjoner for avanserte brukere</a> i repoen.</p>
+			</div>
+		</noscript>
+
+		<h2 data-tx="t0133:1cedb9ee" id="schritt-1">Trinn 1 - Bestill dongle</h2>
+
+		<p data-tx="t0134:2e54f376">Bestill denne USB-dongelen ("ESP32 developer board"). Du trenger ikke å "utvikle" noe som helst, det er bare å installere den ferdige PhoneBlock-programvaren fra nettleseren.</p>
+
+		<figure class="image" style="max-width:300px;">
+			<img alt="ESP32-dongle" data-tx="t0135:31cdc7dc" th:src="@{/assets/img/dongle/dongle-option.png}"/>
+		</figure>
+
+		<div class="notification is-info">
+			<p data-tx="t0136:bbe31efa"><strong>Levering fra Kina - ca. 2 ukers leveringstid </strong> Pris for tiden ca. 10 € inkludert frakt.</p>
+			<p class="mt-2">
+				<a class="button is-primary is-large" rel="noopener" target="_blank" th:href="@{/link/dongle-aliexpress}">
+					<span class="icon"><i class="fas fa-cart-shopping"></i></span>
+					<span data-tx="t0137:49b731d6">Bestill på AliExpress</span>
+				</a>
+			</p>
+			<p class="mt-2">
+				<a class="button is-primary is-large" rel="noopener" target="_blank" th:href="@{/link/dongle-ebay}">
+					<span class="icon"><i class="fas fa-cart-shopping"></i></span>
+					<span data-tx="t0138:4bfe505a">Bestill på eBay</span>
+				</a>
+			</p>
+			<p data-tx="t0139:1caf402b">Disse tilbudene er på ingen måte relatert til PhoneBlock, og PhoneBlock er ikke på noen måte involvert i fortjenesten. Dette handler utelukkende om maskinvaren. Du installerer selv PhoneBlock-programvaren (firmware) etter mottak (se nedenfor).</p>
+		</div>
+
+		<div class="notification is-warning">
+			<p data-tx="t0233:c7a2b08f"><strong>Vennligst ikke bestill «ESP32-S3» — den fungerer ikke.</strong> Spesielt den populære «LILYGO T-Dongle-S3» på Amazon blir kjøpt gjentatte ganger, men lar seg ikke konfigurere: Installasjonsprogrammet i nettleseren avbrytes med meldingen «Your ESP32-S3 board is not supported».</p>
+			<p class="mt-2" data-tx="t0234:61c3809d">S3 har en annen prosessorkjerne enn den klassiske ESP32, og PhoneBlock-firmware finnes kun for den klassiske ESP32. Dette er ikke et driverproblem — med disse kortene er det foreløpig ganske enkelt ingen måte å installere PhoneBlock på. Det samme gjelder variantene S2, C3, C6 og H2.</p>
+			<p class="mt-2" data-tx="t0235:4564bc8e">Pass derfor på at det i tilbudet står <strong>«ESP32» uten tillegg</strong> — akkurat som i de to tilbudene som er lenket til ovenfor.</p>
+		</div>
+
+		<p data-tx="t0140:7f656ebb"><strong>Liker du å bygge ting selv og har du allerede en ESP32 liggende i skuffen?</strong> PhoneBlock vil nesten helt sikkert fungere på kortet ditt også, så lenge det er en klassisk ESP32 (ikke S2/S3/C3/C6/H2) med minst 4 MB flashminne. Det kan hende du trenger en annen USB-seriell-driver, eller må omkonfigurere pin-tilkoblingen for at status-LED-en skal blinke – for dette bør du ta en titt på <a href="https://github.com/haumacher/phoneblock/blob/master/phoneblock-dongle/" rel="noopener" target="_blank">prosjektsiden</a>.</p>
+
+		<h2 data-tx="t0149:69477c42" id="schritt-3">Trinn 2 - Klargjør donglen</h2>
+
+		<p data-tx="t0150:6972bbca">Du må laste inn PhoneBlock-programvaren på donglen én gang. Dette gjør du ved å koble dongelen til en ledig USB-port på datamaskinen. Har du ikke en datamaskin? Bare spør en venn om han eller hun kan klargjøre dongelen for deg. Du kan også sette den opp senere i nettverket ditt fra en mobiltelefon. Du trenger ingen andre enheter for å bruke den.</p>
+		
+		<figure class="image" style="max-width:500px;">
+			<img alt="Velkomstskjerm for dongle" data-tx="t0198:4f273df1" th:src="@{/assets/img/dongle/plugged-into-computer.jpg}"/>
+			<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0205:24785f50">Dongle i USB-porten på datamaskinen</figcaption>
+		</figure>
+
+		<div class="notification is-warning" id="dongle-install-unsupported" style="display:none;">
+			<p data-tx="t0127:cc2d5f5e"><strong>Denne nettleseren kan ikke flashe donglen.</strong> For å klargjøre donglen for bruk trenger du en <strong>Google Chrome</strong> eller <strong>Microsoft Edge</strong>-nettleser på en datamaskin (ikke på en smarttelefon). Åpne denne siden med Chrome eller Edge og prøv igjen.</p>
+		</div>
+
+		<p data-tx="t0153:a0900784">Klikk på knappen. Nettleseren spør deretter hvilken tilkoblet enhet den kan adressere. Velg oppføringen med <strong>"USB-SERIAL CH340"</strong> (Windows) eller <strong>"USB Single Serial"</strong> eller <strong>"wch.cn"</strong> (macOS/Linux) i navnet, og bekreft med <strong>"Connect"</strong>.</p>
+
+		<p>
+			<esp-web-install-button manifest="https://cdn.phoneblock.net/dongle/firmware/stable/manifest.json">
+				<button class="button is-primary is-large" slot="activate" type="button">
+					<span class="icon"><i class="fas fa-bolt"></i></span>
+					<span data-tx="t0154:1b4594a6">Flash nå</span>
+				</button>
+				<button class="button is-primary is-large" disabled="disabled" slot="unsupported" type="button">
+					<span class="icon"><i class="fas fa-bolt"></i></span>
+					<span data-tx="t0155:1b4594a6">Flash nå</span>
+				</button>
+				<button class="button is-primary is-large" disabled="disabled" slot="not-allowed" type="button">
+					<span class="icon"><i class="fas fa-bolt"></i></span>
+					<span data-tx="t0156:1b4594a6">Flash nå</span>
+				</button>
+			</esp-web-install-button>
+		</p>
+
+		<p data-tx="t0157:8a955c74">En liste over alle serielle enheter på datamaskinen vises i valgdialogen. Hvis flere CH340-enheter vises fordi en annen enhet med denne brikken tilfeldigvis er tilkoblet, må du fjerne de andre inntil videre.</p>
+
+		<figure class="image" style="max-width:600px;">
+			<img alt="Velg seriell port" data-tx="t0214:5134180d" th:src="@{/assets/img/dongle/flash-01-select-serial.png}"/>
+			<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0215:f3700f31">Velg seriell port.</figcaption>
+		</figure>
+
+		<p data-tx="t0159:e29e2c1b">Bekreft sikkerhetsprompten "Installere PhoneBlock-dongle?" med <strong>"Install"</strong>. PhoneBlock-programvaren lastes nå inn på dongelen - dette tar omtrent ett minutt. Ikke koble fra dongelen i løpet av denne tiden.</p>
+
+		<div class="columns is-multiline is-mobile is-variable is-2">
+			<div class="column is-3-desktop is-6-tablet is-12-mobile">
+				<figure class="image">
+					<img alt="Start installasjonen" data-tx="t0216:665c866e" th:src="@{/assets/img/dongle/flash-02-start-install.png}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0217:c5e58044">1. Start installasjonen.</figcaption>
+				</figure>
+			</div>
+			<div class="column is-3-desktop is-6-tablet is-12-mobile">
+				<figure class="image">
+					<img alt="Sletting ikke nødvendig for førstegangsinstallasjon" data-tx="t0218:724602c6" th:src="@{/assets/img/dongle/flash-03-erase-device.png}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0219:8647e67f">2. Sletting er ikke nødvendig for førstegangsinstallasjon.</figcaption>
+				</figure>
+			</div>
+			<div class="column is-3-desktop is-6-tablet is-12-mobile">
+				<figure class="image">
+					<img alt="Bekreft igjen" data-tx="t0220:99ac8359" th:src="@{/assets/img/dongle/flash-04-confirm.png}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0221:2a486c2">3. Bekreft på nytt.</figcaption>
+				</figure>
+			</div>
+			<div class="column is-3-desktop is-6-tablet is-12-mobile">
+				<figure class="image">
+					<img alt="Suksess" data-tx="t0222:2ccb7d09" th:src="@{/assets/img/dongle/flash-05-success.png}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0223:e2168672">4. Installasjonen er vellykket.</figcaption>
+				</figure>
+			</div>
+		</div>
+
+		<details class="mt-4">
+			<summary><strong data-tx="t0193:c14d73a">Datamaskinen gjenkjenner ikke donglen? Tips om driveren</strong></summary>
+			<p data-tx="t0194:1c40e13a">Dongelen bruker den serielle USB-brikken <strong>CH340</strong>. Nåværende Windows-, macOS- og Linux-versjoner inkluderer vanligvis allerede driveren - i dette tilfellet trenger du ikke å gjøre noe. Men hvis datamaskinen din ikke viser donglen i enhetsvalget, vil følgende tips hjelpe:</p>
+			<ul>
+				<li data-tx="t0195:758aaf4d"><strong>Windows</strong>: Last ned <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" rel="noopener" target="_blank">CH340-driveren fra wch-ic.com</a>, kjør <code>CH341SER.EXE</code> og klikk på <strong>"INSTALL"</strong>. Ingen omstart er nødvendig.</li>
+				<li data-tx="t0147:901b0f79"><strong>macOS</strong>: Fra og med macOS Big Sur er driveren inkludert i systemet - ingen installasjonstrinn er nødvendig.</li>
+				<li data-tx="t0148:35f91b38"><strong>Linux</strong>: Kjernedriveren er installert. På Ubuntu kan BRLTTY-tjenesten snappe bort CH340 slik at du ikke kan se enhetsfilen - i dette tilfellet vil det hjelpe å avinstallere BRLTTY: <code>sudo apt remove --purge brltty</code>. Brukeren din må også være i gruppen <code>dialout</code>: <code>sudo usermod -aG dialout $USER</code>. Begge trinnene er beskrevet i detalj i <a href="https://github.com/haumacher/phoneblock/blob/master/phoneblock-dongle/GETTING_STARTED.md" rel="noopener" target="_blank">GETTING_STARTED.md</a>.</li>
+			</ul>
+		</details>
+
+		<h2 data-tx="t0161:ff9673d3" id="schritt-5">Trinn 3 - Koble PhoneBlock-dongelen til ruteren</h2>
+
+		<p data-tx="t0162:d933bd4d">Når nettleseren melder "Installasjon fullført!", tar du ut PhoneBlock-dongelen fra datamaskinen og kobler den til en ledig USB-port på ruteren (eller en hvilken som helst 5 V USB-strømforsyning innenfor WLAN-rekkevidde).</p>
+
+		<figure class="image" style="max-width:500px;">
+			<img alt="ESP32-dongle i Fritz!Box" data-tx="t0196:d0a4fea7" th:src="@{/assets/img/dongle/plugged-into-router.jpg}"/>
+			<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0206:ff071800">PhoneBlock-dongle i USB-porten på Fritz!</figcaption>
+		</figure>
+
+		<h2 data-tx="t0164:4aa08d92" id="schritt-6">Trinn 4 - Legg til PhoneBlock-dongelen i WLAN (WPS)</h2>
+
+		<p data-tx="t0165:faed557d">PhoneBlock-donglen har ennå ingen Wi-Fi-tilgangsdata og venter på at du skal koble den til ditt Wi-Fi. LED-lampen <strong>blinker raskt</strong> (ca. fem ganger i sekundet) og signaliserer "Paringsmodus aktiv".</p>
+
+		<p data-tx="t0166:e6ac9e1a">Trykk nå på <strong>WPS-knappen</strong> på ruteren. På Fritz!Box er dette <strong>"Connect / WPS"</strong>-knappen på toppen av enheten - trykk kort til Wi-Fi-LED-en på selve ruteren begynner å blinke. Andre rutere merker knappen "WPS" eller "Pair". I løpet av få sekunder overfører ruteren Wi-Fi-tilgangsdataene dine til PhoneBlock-donglen, som lagrer dem og kobler seg til.</p>
+
+		<figure class="image" style="max-width:500px;">
+			<img alt="WPS-knappen på Fritz!Box" data-tx="t0197:fe3e8d05" th:src="@{/assets/img/dongle/wps-button.jpg}"/>
+			<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0207:b0912da4">WPS-knappen på Fritz!Box</figcaption>
+		</figure>
+
+		<p data-tx="t0168:54d5a6"><strong>Godt gjort:</strong> LED-lampen blinker nå sakte (ca. én gang i sekundet) - PhoneBlock-donglen er i WLAN, har mottatt en adresse og venter på konfigurasjon (neste trinn).</p>
+
+		<p data-tx="t0169:cddfc489"><strong>Fungerte ikke</strong> Sjekk i ruterinnstillingene om WPS er aktivert (på Fritz!Box: <em>WLAN → Sikkerhet → WPS</em>). Hvis WPS-vinduet var for kort, starter PhoneBlock-donglen automatisk sammenkoblingen på nytt - da er det bare å trykke på WPS-knappen igjen.</p>
+
+		<p data-tx="t0228:6f5d0796"><strong>Har ikke ditt WLAN WPS? </strong> Noen tilgangspunkter (f.eks. UniFi) har ikke en WPS-knapp. Skriv deretter inn WLAN-tilgangsdataene direkte i Flash-dialogen: La PhoneBlock-dongelen ligge på datamaskinen (eller koble den til igjen), klikk på <strong>"Flash now"</strong> øverst i trinn 2, og koble til dongelen - i stedet for en ny installasjon tilbyr dialogen nå <strong>"Configure Wi-Fi"</strong>. Velg nettverket ditt fra listen og skriv inn Wi-Fi-passordet; dialogen vil be om det direkte etter den første installasjonen. Koble deretter PhoneBlock-dongelen til ruteren som i trinn 3.</p>
+
+		<h2 data-tx="t0170:6da0bfa" id="schritt-7">Trinn 5 - Registrer deg som telefon og konfigurer PhoneBlock-tilgang</h2>
+
+		<p data-tx="t0171:1da1ccdb">For at PhoneBlock-dongelen skal kunne avlytte samtaler, trenger den fortsatt to ting: SIP-tilgangsdataene dine (slik at den kan logge inn som en ekstra telefon) og et PhoneBlock-token (slik at den kan spørre i spamdatabasen). Du oppgir begge deler i nettgrensesnittet til PhoneBlock-dongelen. Du kan også gjøre resten av oppsettet fra en mobiltelefon.</p>
+
+		<p data-tx="t0172:f4d3bf5f">Åpne i nettleseren:</p>
+
+		<p><a class="button is-link is-large" data-tx="t0173:9be1c030" href="http://answerbot/" target="_blank">http://answerbot/</a></p>
+
+		<p data-tx="t0175:4a5ab444">Hvis denne koblingen ikke fungerer, kan du se etter en enhet med navnet <code>answerbot</code> i enhetslisten til ruteren din, notere IP-adressen og ringe den opp i nettleseren - f.eks. <code>http://192.168.178.xxx/</code>.</p>
+
+		<div class="columns is-multiline is-mobile is-variable is-2">
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Velkomstskjerm for dongle" data-tx="t0204:4f273df1" th:src="@{/assets/img/dongle/01-welcome-screen.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0208:13b1cd01">1. Velkomstskjerm</figcaption>
+				</figure>
+			</div>
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Valg av telefonleverandør" data-tx="t0199:d59036f6" th:src="@{/assets/img/dongle/02-select-telephony-provider.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0209:a1359314">2. Velg telefonleverandør</figcaption>
+				</figure>
+			</div>
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Oppsett av telefoni via Fritz!Box Assistant" data-tx="t0200:3d467669" th:src="@{/assets/img/dongle/03-fritzbox-password.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0210:6f851112">3. Skriv inn Fritz!Box-passordet</figcaption>
+				</figure>
+			</div>
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Bekreftelse av oppsettet på en mobil enhet" data-tx="t0201:be2f6fb4" th:src="@{/assets/img/dongle/04-confirm-with-phone.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0211:ee583806">4. Bekreft med telefon</figcaption>
+				</figure>
+			</div>
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Oppsett av telefoni" data-tx="t0202:ca12a560" th:src="@{/assets/img/dongle/05-telephony-set-up.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0212:3827ae13">5. Oppsett av telefoni</figcaption>
+				</figure>
+			</div>
+			<div class="column is-2-desktop is-4-tablet is-6-mobile">
+				<figure class="image">
+					<img alt="Dongle-oppsett fullført" data-tx="t0203:ecb8f314" th:src="@{/assets/img/dongle/06-setup-completed.jpg}"/>
+					<figcaption class="has-text-centered is-size-7 mt-2" data-tx="t0213:b2188a52">6. Oppsett fullført</figcaption>
+				</figure>
+			</div>
+		</div>
+
+		<p data-tx="t0177:a09627c1">Gå inn i webgrensesnittet:</p>
+		<ul>
+			<li data-tx="t0178:4b81384d"><strong>SIP-tilgangsdata</strong> - brukernavn, passord og registraradresse. For en Fritz!Box oppretter du en ekstra tilkobling under <em>Telefoni → Telefonienheter → Konfigurer ny enhet → Telefon (med og uten telefonsvarer) → LAN/WLAN (IP-telefon)</em>. Skriv inn tilgangsdataene som er tilordnet her, og skriv inn <code>fritz.box</code> som registrator.</li>
+			<li data-tx="t0179:9fd0fd46"><strong>PhoneBlock-token</strong> - opprett et API-token i <a th:href="@{/settings}">PhoneBlock-innstillingene</a>, og kopier det inn i det tilsvarende feltet.</li>
+		</ul>
+
+		<p data-tx="t0180:9741140b">Lagre → LED-lampen lyser nå permanent → PhoneBlock-dongelen er klar til bruk. Spam-anrop vil nå bli avlyttet i stillhet før telefonen ringer.</p>
+
+		<div class="notification is-warning">
+			<p data-tx="t0232:dd690562"><strong>Sikkerhetsadvarsel:</strong> Bruk dongelen utelukkende i ditt lokale hjemmenettverk. Den må <strong>ikke</strong> være tilgjengelig fra Internett — ikke konfigurer portåpning eller opprett en «Exposed Host»/DMZ-oppføring for dongelen i ruteren. En dongle som er tilgjengelig fra internett, blir oppdaget og angrepet av automatiske skannere; et passord på nettgrensesnittet beskytter ikke mot dette, siden selve tilgjengeligheten utgjør risikoen.</p>
+		</div>
+
+		<hr class="my-5"/>
+
+		<p class="has-text-grey" data-tx="t0181:9316079d">Er det noe som ikke fungerer, bruker du Firefox/Safari, Linux med særegenheter eller et annet brett? Detaljerte instruksjoner med alle alternativer, Linux-fallgruver og ESP-IDF-verktøykjeden finner du i repoen: <a href="https://github.com/haumacher/phoneblock/blob/master/phoneblock-dongle/GETTING_STARTED.md" rel="noopener" target="_blank">GETTING_STARTED.md</a>.</p>
+
+		<h2 data-tx="t0182:c258f25f" id="tester">Bidra med erfaringsrapport</h2>
+
+		<p data-tx="t0183:aef4c36">De første PhoneBlock-dongene fungerer pålitelig - men rutermodeller, leverandører og tilkoblingstyper er en fargerik blanding, og hver kombinasjon har sine egne særegenheter. For å forbedre installasjonsveiviseren er <strong>strukturerte erfaringsrapporter</strong> gull verdt - uansett om alt fungerte for deg eller om det oppstod problemer.</p>
+
+		<p data-tx="t0184:49f94506">Spesielt interessante er oppsett som fortsatt er dårlig dekket:</p>
+
+		<ul>
+			<li data-tx="t0185:e1971ce0">Telekom-tilkobling med <strong>Speedport</strong>-ruter</li>
+			<li data-tx="t0186:61cce24d">Vodafone/Unitymedia-kabeltilkobling med den medfølgende leverandørboksen</li>
+			<li data-tx="t0187:ea506b90">1&amp;1, o2, Deutsche Glasfaser og andre leverandører</li>
+			<li data-tx="t0188:3d2d85c2">Internasjonale forbindelser (Sveits, Østerrike, resten av Europa og verden)</li>
+		</ul>
+
+		<p data-tx="t0189:3fcb6dd2">Rapporter kjøres via GitHub-problemer - et forhåndsutfylt skjema ber om de viktigste nøkkeldataene (maskinvare, ruter, leverandør, fastvareversjon, funn) på en strukturert måte. Andre testere kan se direkte hvilke oppsett som allerede er dekket og hvilke som ikke er det.</p>
+
+		<p>
+			<a class="button is-primary is-medium" href="https://github.com/haumacher/phoneblock/issues/new?template=dongle-test-report.yml" rel="noopener" target="_blank">
+				<span class="icon"><i class="fab fa-github"></i></span>
+				<span data-tx="t0190:92ec79b">Åpen erfaringsrapport</span>
+			</a>
+		</p>
+
+		<hr class="my-5"/>
+
+		<p class="has-text-grey" data-tx="t0191:8a689eeb">Kildekoden til fastvaren: <a href="https://github.com/haumacher/phoneblock/tree/master/phoneblock-dongle" rel="noopener" target="_blank"> phoneblock-dongle på GitHub</a>.</p>
+
+	</div>
+</section>
+
+<script src="https://cdn.phoneblock.net/dongle/installer/esp-web-tools/install-button.js" type="module"></script>
+
+<script>
+(function() {
+	if (!('serial' in navigator)) {
+		var box = document.getElementById('dongle-install-unsupported');
+		if (box) { box.style.display = ''; }
+	}
+})();
+</script>
+
+<div th:replace="~{fragments/page :: footer}"></div>
+</body>
+</html>

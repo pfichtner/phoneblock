@@ -1,0 +1,259 @@
+menu "PhoneBlock Dongle"
+
+    config PHONEBLOCK_BASE_URL
+        string "PhoneBlock base URL"
+        default "https://phoneblock.net/phoneblock"
+        help
+            Root URL of the PhoneBlock web deployment. The firmware
+            appends /api/num/{phone}, /api/rate, /api/test etc. for
+            REST calls, and /mobile/login for the OAuth token flow.
+
+            Two deployments exist:
+              * https://phoneblock.net/phoneblock — production
+              * https://phoneblock.net/pb-test    — test instance
+
+            A token is bound to exactly one instance. Tokens generated on
+            the test instance only work there, and vice versa. The token
+            prefix (pbt_) is the same in both cases.
+
+    config DONGLE_DEFAULT_TZ
+        string "Default POSIX timezone"
+        default "CET-1CEST,M3.5.0,M10.5.0/3"
+        help
+            POSIX TZ string applied to the wall clock until the user
+            overrides it from the web UI (which can learn the zone from
+            the browser). The default is Europe/Berlin
+            ("CET-1CEST,M3.5.0,M10.5.0/3").
+
+            Note: ESP-IDF's newlib has no IANA timezone database, so this
+            must be the POSIX form ("CET-1CEST,...") — an IANA name like
+            "Europe/Berlin" would NOT work with tzset().
+
+    config MAIL_DAILY_HOUR
+        int "Daily status-mail hour (local time, 0-23)"
+        default 23
+        range 0 23
+        help
+            Local hour at which the daily status mail is sent. Default 23
+            (23:00) so it flushes the day's spam reports / errors at the
+            end of the day. The mail also fires shortly after boot (to
+            surface a post-crash error promptly) and is a no-op unless
+            there is something new to report, so a quiet day mails nothing.
+
+            Needs the wall clock (time_sync.c); until SNTP sets it, the
+            job retries hourly and snaps to this hour once the time is
+            known.
+
+    config PHONEBLOCK_OTA_BASE_URL
+        string "OTA update base URL"
+        default "https://cdn.phoneblock.net/dongle/firmware"
+        help
+            HTTPS base URL the dongle polls for OTA updates. The
+            firmware appends "/<channel>/ota-<target>.json" (e.g.
+            ota-esp32c3.json, ota-esp32s3.json), where the channel ("stable" by default,
+            "beta" for opt-in testers) is selected at runtime in the
+            web UI and persisted in NVS. Releases publish to both
+            channels so beta is always at least as new as stable (see
+            scripts/release.sh).
+
+            The per-chip file has the shape of the esp-web-tools
+            manifest, reduced to this chip's build and its app part
+            (written by scripts/ota-manifest.sh):
+
+              {"version": "1.0.3",
+               "builds": [{
+                 "chipFamily": "ESP32-C3",
+                 "parts": [{"path": ".../esp32c3/phoneblock_dongle.bin"}],
+                 "integrity": {"app_sha256": "...", "signature": "..."}}]}
+
+            If the channel has no per-chip file (404, a channel last
+            published before they existed), the firmware falls back to
+            the channel's installer manifest.json, which lists every
+            chip's build with all parts the browser installer flashes.
+            Either way OTA picks the build whose chipFamily matches its
+            own chip and the part whose path ends in
+            "phoneblock_dongle.bin" (the app slot); see ota_manifest.h.
+
+            When `version` differs from the running image,
+            esp_https_ota fetches the picked binary and flips the
+            boot partition. TLS trust is provided by the bundled
+            Mozilla root CA store (enabled via
+            CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL).
+
+    config SIP_REGISTRAR_PORT
+        int "SIP registrar port"
+        default 5060
+        range 1 65535
+        help
+            Default port written into NVS when the user does not
+            override it through the web UI. Registrar host, username
+            and password are not configurable via Kconfig — they go
+            through the setup wizard.
+
+    config SIP_EXPIRES
+        int "Requested registration lifetime (seconds)"
+        default 3600
+        range 60 86400
+        help
+            Maximum lifetime requested in the REGISTER's "Expires:"
+            header. The registrar caps this to its own limit
+            (Fritz!Box: 600 s) and returns the granted value in the
+            200 OK; the dongle then refreshes at granted/2 — so this
+            setting is a *desired upper bound*, not the actual refresh
+            interval. Bumping it above the registrar's cap has no
+            effect; setting it below caps us further than the
+            registrar would.
+
+    config SIP_CONTACT_HOST_OVERRIDE
+        string "Override local host in Via/Contact (for NAT debugging)"
+        default ""
+        help
+            When running inside QEMU user-mode networking, the ESP32's
+            local IP (e.g. 10.0.2.15) is only reachable from within the
+            emulator. The Fritz!Box cannot deliver an INVITE to that
+            address. Set this to the host-visible address (typically the
+            workstation's LAN IP, e.g. 192.168.178.22) and combine with
+            `-nic user,model=open_eth,hostfwd=udp::15060-:15060` in QEMU.
+            Leave empty to advertise the actual local interface IP,
+            which is the correct behavior on real hardware.
+
+    config SIP_CONTACT_PORT_OVERRIDE
+        int "Override local SIP port in Via/Contact (0 = no override)"
+        default 0
+        range 0 65535
+        help
+            If the hostfwd maps a different host port to the guest, set
+            it here. 0 means "advertise the bound UDP port".
+
+    config SIP_TEST_FORCE_SPAM_STAR_NUMBERS
+        bool "Default for the runtime 'Accept local test calls' toggle"
+        default n
+        help
+            Initial state of the runtime "Lokale Testanrufe annehmen"
+            checkbox in the web UI under Spam-Ansage. The first time
+            the dongle boots (NVS key empty), this Kconfig value
+            decides whether the test hook is on or off; once the user
+            toggles the checkbox, the persisted runtime value wins
+            and survives reboots / firmware updates until factory
+            reset.
+
+            When the toggle is on, callers whose number starts with
+            '*' (Fritz!Box internal dial codes like **622 or *21#)
+            are treated as SPAM and answered with 200 OK + tone +
+            BYE, bypassing both the display-name phone-book skip
+            and the PhoneBlock API. Lets you exercise the full
+            answer + audio + hangup path by calling your IP-phone
+            extension from another internal Fritz!Box phone,
+            without blacklisting a real number.
+
+    config STATUS_LED_GPIO
+        int "Status LED GPIO (-2 = auto-detect, -1 = disable)"
+        default -2
+        range -2 48
+        help
+            GPIO driven by the status LED task with blink patterns
+            for PAIRING / CONNECTING / SETUP / READY.
+
+              -2 (default) = auto-detect: GPIO 10 on chips with
+                             embedded flash (EGBO PICO-D4 dongle —
+                             flash inside the SoC, GPIO 10 free as
+                             a regular pin), GPIO 2 otherwise (the
+                             on-board blue LED of ESP32-WROOM-32
+                             dev boards, where GPIO 10 carries the
+                             external flash WP signal and is unsafe
+                             to drive). Polarity is auto-detected
+                             too: the GPIO 10 dongle LED is wired
+                             active-low, the WROOM-32 on-board LED
+                             active-high. ESP32-C3 builds always
+                             use GPIO 8, active-low (C3 Super Mini);
+                             ESP32-S3 builds drive the APA102 RGB
+                             LED of the LilyGO T-Dongle-S3.
+                             STATUS_LED_ACTIVE_LOW is ignored in
+                             this mode.
+              -1           = disable the LED task entirely.
+              0..48        = explicit pin override for non-standard
+                             hardware. Polarity then comes from
+                             STATUS_LED_ACTIVE_LOW.
+
+    config STATUS_LED_ACTIVE_LOW
+        bool "Status LED is active-low"
+        default n
+        help
+            Enable if the LED is wired so that a LOW GPIO level
+            turns it on (e.g. LED-to-3V3-via-resistor topology).
+            The WROOM-32 on-board LED is active-high; leave
+            disabled for that case.
+
+            Only consulted when STATUS_LED_GPIO is an explicit pin
+            (0..48). In auto-detect mode (STATUS_LED_GPIO=-2) the
+            polarity is derived together with the pin from the
+            chip type and this setting is ignored.
+
+    config RTP_PLAY_ANNOUNCEMENT
+        bool "Play voice announcement to spam callers"
+        default y
+        help
+            When enabled, answered spam calls stream the active
+            announcement to the caller (G.711 A-law, 8 kHz, 20 ms frames)
+            before BYE. The announcement is resolved at call time from
+            SPIFFS: a user-uploaded custom file, else the localized file
+            downloaded from the CDN for the selected ui_lang, else nothing
+            (silent pickup). No announcement is baked into the firmware
+            (issue #460). Disable this to always send BYE immediately after
+            ACK regardless of any stored file.
+
+    config CRASH_TEST_ENABLE
+        bool "Expose a deliberate-crash button in the web UI (dev only)"
+        default n
+        help
+            When enabled, the web UI gains a "Coredump-Test" section
+            with a button that triggers an intentional panic via
+            esp_system_abort(). The panic handler writes a core dump
+            to the dedicated flash partition; on the next boot,
+            crashreport.c uploads it to the PhoneBlock backend.
+            Together this exercises the whole capture-and-upload
+            pipeline without having to wait for a real bug.
+
+            Production builds MUST leave this off — the URI handler
+            is compiled out entirely with the flag disabled, so an
+            attacker cannot brick a device by guessing /api/dev/crash.
+            The HTML section is also hidden by JS unless the status
+            JSON reports the feature as on.
+
+    config HEAP_GUARD_ENABLE
+        bool "Heap-corruption sentinel"
+        default y
+        help
+            Walk the heap periodically and, on finding a block header
+            that cannot be true, copy the surrounding bytes onto the
+            stack and panic deliberately.
+
+            This exists because 1.5.0 and 1.5.1 both crashed inside
+            tlsf_walk_pool while the dashboard read heap statistics —
+            the first code to touch an already-corrupted heap, so the
+            backtrace named the victim and never the culprit. A core
+            dump preserves task stacks but not the heap, so the
+            evidence has to be copied onto a stack to survive; the
+            deliberate panic is what puts it there, and the reboot
+            reinitialises the heap a corrupted dongle cannot recover
+            from anyway.
+
+            Leave enabled until the corruption is found. It allocates
+            nothing and costs one short heap walk per interval.
+
+    config HEAP_GUARD_INTERVAL_S
+        int "Seconds between heap walks"
+        depends on HEAP_GUARD_ENABLE
+        default 5
+        range 1 3600
+        help
+            Shorter is better while hunting: the bytes that identify
+            the writer are only evidence until that memory is freed
+            and reused, which happens on a millisecond timescale. The
+            walk holds the heap's spinlock, so it runs with interrupts
+            disabled — the boot self-test logs the measured duration
+            and block count so the real cost is known per device. A
+            walk is deferred while a call is streaming RTP and runs on
+            the first tick afterwards instead.
+
+endmenu

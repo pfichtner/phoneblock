@@ -1,0 +1,601 @@
+#include "web_auth.h"
+
+#include <string.h>
+
+#include "esp_log.h"
+#include "esp_random.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+#include "api.h"
+#include "config.h"
+#include "web.h"
+#include "web_access.h"
+
+// Must be last: bans unsafe string APIs for the rest of this file.
+#include "banned_apis.h"
+
+static const char *TAG = "web_auth";
+
+// --- Session store --------------------------------------------------
+
+#define SESSION_ID_HEX 32                  // 16 bytes of entropy
+#define MAX_SESSIONS   4                   // small fleet of trusted devices
+
+typedef struct {
+    char    id[SESSION_ID_HEX + 1];        // empty string = free slot
+    int64_t last_used_us;
+} session_t;
+
+static session_t      s_sessions[MAX_SESSIONS];
+static SemaphoreHandle_t s_mutex;
+
+// CSRF nonce for the in-flight login round-trip. We only ever have
+// one active login at a time per dongle, so a single slot is enough;
+// concurrent activations from two browsers would simply race, and the
+// later one wins, which matches the user's expectation.
+static char s_login_nonce[SESSION_ID_HEX + 1];
+// True while /auth/start was invoked with `activate=1` — the
+// callback will then persist auth_enabled=1 if verification succeeds.
+static bool s_login_activates;
+// True while /auth/start was invoked with `remember=1` — the
+// callback will then mint a persistent cookie (with Max-Age) and
+// pin its value in NVS so it survives reboots. Only one browser at
+// a time is "remembered"; a second remember-login overwrites the
+// first.
+static bool s_login_remember;
+
+// Lifetime of the "stay logged in" cookie when the user opts in.
+// One year is long enough to feel like "stays logged in", short
+// enough that a forgotten cookie eventually expires on its own.
+#define REMEMBER_MAX_AGE_SEC (60 * 60 * 24 * 365)
+
+static void lock(void)   { xSemaphoreTake(s_mutex, portMAX_DELAY); }
+static void unlock(void) { xSemaphoreGive(s_mutex); }
+
+void web_auth_setup(void)
+{
+    s_mutex = xSemaphoreCreateMutex();
+    memset(s_sessions, 0, sizeof(s_sessions));
+    s_login_nonce[0] = '\0';
+    s_login_activates = false;
+    s_login_remember  = false;
+}
+
+// --- Helpers --------------------------------------------------------
+
+static void random_hex(char *out, int hex_chars)
+{
+    static const char H[] = "0123456789abcdef";
+    for (int i = 0; i < hex_chars; i++) {
+        out[i] = H[esp_random() & 0x0f];
+    }
+    out[hex_chars] = '\0';
+}
+
+// Constant-time compare for fixed-length null-terminated hex strings —
+// avoids leaking how many leading bytes of an attacker's guess matched.
+static bool hex_eq(const char *a, const char *b, size_t n)
+{
+    int diff = 0;
+    for (size_t i = 0; i < n; i++) diff |= (a[i] ^ b[i]);
+    return diff == 0;
+}
+
+// Find session by ID. Caller must hold the mutex. Returns NULL when
+// no slot matches.
+static session_t *find_session(const char *id)
+{
+    if (!id || !id[0]) return NULL;
+    if (strlen(id) != SESSION_ID_HEX) return NULL;
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (s_sessions[i].id[0] && hex_eq(s_sessions[i].id, id, SESSION_ID_HEX)) {
+            return &s_sessions[i];
+        }
+    }
+    return NULL;
+}
+
+// Insert into a free slot, or evict the least-recently-used entry.
+// Caller must hold the mutex.
+static void store_session(const char *id)
+{
+    int oldest = 0;
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+        if (!s_sessions[i].id[0]) {
+            oldest = i;
+            break;
+        }
+        if (s_sessions[i].last_used_us < s_sessions[oldest].last_used_us) {
+            oldest = i;
+        }
+    }
+    memcpy(s_sessions[oldest].id, id, SESSION_ID_HEX + 1);
+    s_sessions[oldest].last_used_us = esp_timer_get_time();
+}
+
+// Extract the value of cookie name `name` from a Cookie header.
+// Returns true and writes into `out` on success. Cookies are simple
+// "k=v; k=v" lists — we don't need full RFC 6265 parsing.
+static bool cookie_get(const char *header, const char *name,
+                      char *out, size_t out_cap)
+{
+    size_t name_len = strlen(name);
+    const char *p = header;
+    while (p && *p) {
+        while (*p == ' ' || *p == ';') p++;
+        if (!*p) break;
+        if (strncmp(p, name, name_len) == 0 && p[name_len] == '=') {
+            const char *v = p + name_len + 1;
+            const char *end = strchr(v, ';');
+            size_t vlen = end ? (size_t)(end - v) : strlen(v);
+            if (vlen >= out_cap) return false;
+            memcpy(out, v, vlen);
+            out[vlen] = '\0';
+            return true;
+        }
+        const char *next = strchr(p, ';');
+        if (!next) break;
+        p = next + 1;
+    }
+    return false;
+}
+
+static bool get_cookie_session(httpd_req_t *req, char *out, size_t out_cap)
+{
+    char header[256];
+    if (httpd_req_get_hdr_value_str(req, "Cookie", header, sizeof(header)) != ESP_OK) {
+        return false;
+    }
+    return cookie_get(header, "pb_session", out, out_cap);
+}
+
+// --- Public API -----------------------------------------------------
+
+bool web_auth_session_valid(httpd_req_t *req)
+{
+    char id[SESSION_ID_HEX + 1];
+    if (!get_cookie_session(req, id, sizeof(id))) return false;
+    bool ok = false;
+    lock();
+    session_t *s = find_session(id);
+    if (s) {
+        s->last_used_us = esp_timer_get_time();
+        ok = true;
+    }
+    unlock();
+    if (ok) return true;
+
+    // No RAM session — but the cookie may still match the dongle's
+    // single "remembered" browser persisted in NVS. Constant-time
+    // compare against the stored token; the persist value is also
+    // a 32-char hex blob, so the lengths line up.
+    const char *persist = config_auth_persist();
+    if (persist[0]
+            && strlen(persist) == SESSION_ID_HEX
+            && strlen(id) == SESSION_ID_HEX
+            && hex_eq(persist, id, SESSION_ID_HEX)) {
+        return true;
+    }
+    return false;
+}
+
+bool web_auth_is_logged_in(httpd_req_t *req)
+{
+    return web_auth_session_valid(req);
+}
+
+// Refuse a remote caller reaching a gate-off dongle. 403 with a hint to
+// enable authentication for remote access (see docs/network-access-
+// control.md). API routes get JSON, HTML routes a short page.
+static void reject_remote(httpd_req_t *req, bool is_api)
+{
+    httpd_resp_set_status(req, "403 Forbidden");
+    if (is_api) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"reason\":\"local_only\"}");
+    } else {
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req,
+            "<!doctype html><meta charset=utf-8>"
+            "<title>PhoneBlock Dongle</title>"
+            "<p>This dongle only answers requests from the local network. "
+            "To reach it remotely, enable authentication "
+            "(\"Login with PhoneBlock\") in its settings from a device on "
+            "the same network first.</p>");
+    }
+}
+
+bool web_auth_required(httpd_req_t *req, bool is_api)
+{
+    if (!config_auth_enabled()) {
+        // Gate off: LAN-only. Serve local clients (direct or via a
+        // trusted local reverse proxy); refuse remote peers outright.
+        if (web_client_is_local(req)) return true;
+        reject_remote(req, is_api);
+        return false;
+    }
+    // Gate on: authenticated access, from anywhere (a valid session
+    // cookie tied to the pinned PhoneBlock account is the credential).
+    if (web_auth_session_valid(req)) return true;
+
+    if (is_api) {
+        httpd_resp_set_status(req, "401 Unauthorized");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"reason\":\"login_required\"}");
+    } else {
+        // Send the user back to the SPA; index.html itself decides
+        // whether to render the dashboard or the in-page login state
+        // based on the result of /api/status.
+        httpd_resp_set_status(req, "302 Found");
+        httpd_resp_set_hdr(req, "Location", "/");
+        httpd_resp_send(req, NULL, 0);
+    }
+    return false;
+}
+
+bool web_public_allowed(httpd_req_t *req, bool is_api)
+{
+    // Intentionally-public routes (the SPA shell, favicon, the login
+    // handshake, the PNA preflight). When the gate is on they must be
+    // reachable from wherever the user browses so login works. When the
+    // gate is off they are LAN-only, like everything else — a remote
+    // scanner should not even be able to fingerprint the device or begin
+    // an activation it could never complete.
+    if (config_auth_enabled()) return true;
+    if (web_client_is_local(req)) return true;
+    reject_remote(req, is_api);
+    return false;
+}
+
+// --- HTTP handlers --------------------------------------------------
+
+// Percent-encode `src` into `dst` using the unreserved-character set
+// (RFC 3986 §2.3). The dongle only ever encodes simple LAN host names
+// and ASCII PhoneBlock user-names; this is enough for both. Returns
+// false if `dst` would overflow.
+static bool pct_encode(const char *src, char *dst, size_t cap)
+{
+    char *end = dst + cap;
+    while (*src) {
+        if (dst + 4 >= end) return false;
+        unsigned c = (unsigned char)*src++;
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~') {
+            *dst++ = (char)c;
+        } else {
+            static const char H[] = "0123456789ABCDEF";
+            *dst++ = '%';
+            *dst++ = H[(c >> 4) & 0xF];
+            *dst++ = H[c & 0xF];
+        }
+    }
+    if (dst >= end) return false;
+    *dst = '\0';
+    return true;
+}
+
+esp_err_t web_auth_handle_start(httpd_req_t *req)
+{
+    // LAN-only while the gate is off — activation must be initiated from
+    // the local network, so a remote party can never pin the gate to
+    // their own account.
+    if (!web_public_allowed(req, false)) return ESP_OK;
+    // The "activate=1" query flag persists across the round-trip via
+    // s_login_activates; only the dongle UI passes it. The CSRF
+    // nonce is stored alongside so we can match it on the callback.
+    char query[128];
+    bool activate = false;
+    bool remember = false;
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) == ESP_OK) {
+        char val[8];
+        if (httpd_query_key_value(query, "activate", val, sizeof(val)) == ESP_OK
+            && strcmp(val, "1") == 0) {
+            activate = true;
+        }
+        if (httpd_query_key_value(query, "remember", val, sizeof(val)) == ESP_OK
+            && strcmp(val, "1") == 0) {
+            remember = true;
+        }
+    }
+
+    lock();
+    random_hex(s_login_nonce, SESSION_ID_HEX);
+    s_login_activates = activate;
+    s_login_remember  = remember;
+    char nonce_copy[SESSION_ID_HEX + 1];
+    memcpy(nonce_copy, s_login_nonce, sizeof(nonce_copy));
+    unlock();
+
+    // Build the loopback callback URL using whatever Host the
+    // browser used to reach us — same trick as /register-start.
+    char host[64] = "answerbot";
+    httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host));
+
+    char callback[160];
+    snprintf(callback, sizeof(callback), "http://%s/auth/callback", host);
+
+    char callback_enc[256];
+    pct_encode(callback, callback_enc, sizeof(callback_enc));
+
+    // Tell phoneblock.net which PhoneBlock account this dongle expects,
+    // so a wrong-account browser session is silently logged out and the
+    // user gets the standard sign-in form (instead of a mint → mismatch
+    // → retry → re-mint loop). Only sent once the gate has been
+    // activated; pre-activation the user is whoever logs in first.
+    const char *expected = config_auth_user();
+    char hint_enc[96] = "";
+    if (expected[0]) {
+        pct_encode(expected, hint_enc, sizeof(hint_enc));
+    }
+
+    char url[640];
+    if (hint_enc[0]) {
+        snprintf(url, sizeof(url),
+            "%s/auth/gate?callback=%s&state=%s&user_hint=%s",
+            config_phoneblock_base_url(), callback_enc, nonce_copy, hint_enc);
+    } else {
+        snprintf(url, sizeof(url),
+            "%s/auth/gate?callback=%s&state=%s",
+            config_phoneblock_base_url(), callback_enc, nonce_copy);
+    }
+
+    ESP_LOGI(TAG, "auth/start → redirect to %s (activate=%d, remember=%d)",
+             url, (int)activate, (int)remember);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", url);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+// 302 the browser back to the SPA's login state with a machine-readable
+// `?login_error=<code>` query the JS side maps to a localized banner.
+// `expected_user`, if non-NULL/non-empty, is appended as `expected=…`
+// so the banner can show "expected: alice@…" instead of a generic
+// "wrong account" message.
+// Keeps this handler from rendering its own (untranslated, unstyled)
+// error pages.
+static esp_err_t redirect_login_error(httpd_req_t *req, const char *code,
+                                      const char *expected_user)
+{
+    char location[256];
+    if (expected_user && expected_user[0]) {
+        char enc[96];
+        if (!pct_encode(expected_user, enc, sizeof(enc))) enc[0] = '\0';
+        snprintf(location, sizeof(location),
+                 "/?login_error=%s&expected=%s", code, enc);
+    } else {
+        snprintf(location, sizeof(location), "/?login_error=%s", code);
+    }
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", location);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+esp_err_t web_auth_handle_callback(httpd_req_t *req)
+{
+    // Same locality rule as /auth/start: while the gate is off the
+    // callback completing an *activation* must come from the LAN.
+    if (!web_public_allowed(req, false)) return ESP_OK;
+    char query[1024];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+        ESP_LOGW(TAG, "auth/callback: missing query");
+        return redirect_login_error(req, "missing", NULL);
+    }
+    char code[768] = "";
+    char state[64] = "";
+    httpd_query_key_value(query, "code",  code,  sizeof(code));
+    httpd_query_key_value(query, "state", state, sizeof(state));
+
+    lock();
+    bool nonce_ok = s_login_nonce[0] && strlen(state) == SESSION_ID_HEX
+                    && hex_eq(s_login_nonce, state, SESSION_ID_HEX);
+    bool was_activate = s_login_activates;
+    bool was_remember = s_login_remember;
+    s_login_nonce[0] = '\0';     // single-use
+    s_login_activates = false;
+    s_login_remember  = false;
+    unlock();
+
+    if (!nonce_ok) {
+        ESP_LOGW(TAG, "auth/callback: bad CSRF state");
+        return redirect_login_error(req, "expired", NULL);
+    }
+    if (!code[0]) {
+        ESP_LOGW(TAG, "auth/callback: missing code");
+        return redirect_login_error(req, "missing", NULL);
+    }
+
+    // Round-trip to phoneblock.net: server validates JWT signature
+    // and expiry, returns the subject (PhoneBlock user-name).
+    char verified_user[64];
+    if (!phoneblock_verify_auth_code(code, state,
+                                     verified_user, sizeof(verified_user))) {
+        ESP_LOGW(TAG, "auth/callback: server rejected verification");
+        return redirect_login_error(req, "rejected", NULL);
+    }
+
+    if (was_activate) {
+        // Trust-on-first-use: pin the verified user as the dongle's
+        // owner. From here on, only this PhoneBlock account can log
+        // in to the gate, regardless of what happens to the API
+        // token on the server side.
+        config_update_t u = {
+            .auth_enabled = "1",
+            .auth_user    = verified_user,
+        };
+        if (config_update(&u) != ESP_OK) {
+            ESP_LOGE(TAG, "auth/callback: failed to persist activation");
+            return redirect_login_error(req, "persist", NULL);
+        }
+        ESP_LOGI(TAG, "auth/callback: activated for user '%s'", verified_user);
+    } else {
+        // Normal login: the JWT must be for the same user the
+        // dongle was activated for. Without this check, anyone with
+        // a PhoneBlock account could log in to anyone's dongle.
+        const char *expected = config_auth_user();
+        if (!expected[0] || strcmp(verified_user, expected) != 0) {
+            ESP_LOGW(TAG, "auth/callback: user mismatch (got '%s', want '%s')",
+                     verified_user, expected);
+            return redirect_login_error(req, "mismatch", expected);
+        }
+    }
+
+    char id[SESSION_ID_HEX + 1];
+    random_hex(id, SESSION_ID_HEX);
+
+    char cookie[160];
+    if (was_remember) {
+        // "Stay logged in": pin the cookie value in NVS so it
+        // survives a reboot, and hand it out with an explicit
+        // Max-Age. Overwrites any previously remembered browser —
+        // by design only one persistent cookie is tracked at a time
+        // (so a second remember-login from a different browser
+        // silently logs the first one out).
+        config_update_t u = {
+            .auth_persist = id,
+        };
+        if (config_update(&u) != ESP_OK) {
+            ESP_LOGE(TAG, "auth/callback: failed to persist cookie");
+            return redirect_login_error(req, "persist", NULL);
+        }
+        snprintf(cookie, sizeof(cookie),
+            "pb_session=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax",
+            id, REMEMBER_MAX_AGE_SEC);
+    } else {
+        lock();
+        store_session(id);
+        unlock();
+        snprintf(cookie, sizeof(cookie),
+            "pb_session=%s; Path=/; HttpOnly; SameSite=Lax", id);
+    }
+
+    ESP_LOGI(TAG, "auth/callback: session created%s%s",
+             was_activate ? " (and gate activated)" : "",
+             was_remember ? " (remembered)"         : "");
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_set_hdr(req, "Set-Cookie", cookie);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+esp_err_t web_auth_handle_logout(httpd_req_t *req)
+{
+    if (!web_public_allowed(req, false)) return ESP_OK;
+    char id[SESSION_ID_HEX + 1];
+    if (get_cookie_session(req, id, sizeof(id))) {
+        lock();
+        session_t *s = find_session(id);
+        if (s) s->id[0] = '\0';
+        unlock();
+
+        // If the user logged out from the "remembered" browser,
+        // drop the NVS pin too — otherwise the cookie we just told
+        // the browser to discard would still be a valid login on
+        // any other device that happens to hold a copy.
+        const char *persist = config_auth_persist();
+        if (persist[0] && strlen(persist) == SESSION_ID_HEX
+                && strlen(id) == SESSION_ID_HEX
+                && hex_eq(persist, id, SESSION_ID_HEX)) {
+            config_update_t u = { .auth_persist = "" };
+            (void) config_update(&u);
+        }
+    }
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "/");
+    httpd_resp_set_hdr(req, "Set-Cookie",
+        "pb_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+esp_err_t web_auth_handle_login_link(httpd_req_t *req)
+{
+    if (!web_auth_required(req, false)) return ESP_OK;
+
+    char query[256];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req,
+            "<p>Missing 'next' parameter. <a href=\"/\">Back</a>.</p>");
+        return ESP_OK;
+    }
+    char next_raw[192];
+    if (httpd_query_key_value(query, "next", next_raw, sizeof(next_raw)) != ESP_OK
+            || !next_raw[0]) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req,
+            "<p>Missing 'next' parameter. <a href=\"/\">Back</a>.</p>");
+        return ESP_OK;
+    }
+    // httpd_query_key_value() does not percent-decode the value; the
+    // browser sends the path encoded ("/nums/%2B49…" → "%2Fnums%2F%252B49…"),
+    // so the validation below would always reject it. Decode first.
+    char next[192];
+    url_decode(next_raw, strlen(next_raw), next, sizeof(next));
+    // Reject anything that isn't a server-relative path. Without this
+    // a hostile link inside the dongle UI could trick the user into a
+    // login flow that lands on a third-party site.
+    if (next[0] != '/' || next[1] == '/') {
+        ESP_LOGW(TAG, "auth/login-link: refusing 'next' = \"%s\"", next);
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req,
+            "<p>'next' must be a server-relative path. "
+            "<a href=\"/\">Back</a>.</p>");
+        return ESP_OK;
+    }
+
+    char redirect_url[512];
+    if (!phoneblock_mint_login_ticket(next, redirect_url, sizeof(redirect_url))) {
+        httpd_resp_set_status(req, "502 Bad Gateway");
+        httpd_resp_set_type(req, "text/html; charset=utf-8");
+        httpd_resp_sendstr(req,
+            "<p>Konnte Anmelde-Ticket nicht erzeugen. "
+            "<a href=\"/\">Zur&uuml;ck</a>.</p>");
+        return ESP_OK;
+    }
+
+    ESP_LOGI(TAG, "auth/login-link: 302 → %s", next);
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", redirect_url);
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+esp_err_t web_auth_handle_disable(httpd_req_t *req)
+{
+    if (!web_auth_required(req, true)) return ESP_OK;
+
+    // Clear both flag and pinned user — re-enabling later goes
+    // through trust-on-first-use again, allowing the (potentially
+    // changed) PhoneBlock account name to take over cleanly.
+    config_update_t u = {
+        .auth_enabled = "0",
+        .auth_user    = "",
+        .auth_persist = "",
+    };
+    if (config_update(&u) != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"ok\":false,\"reason\":\"nvs\"}");
+        return ESP_OK;
+    }
+
+    // Drop every active session — leaving stale cookies behind would
+    // be harmless (the gate is off now) but invites surprise on the
+    // next re-enable.
+    lock();
+    for (int i = 0; i < MAX_SESSIONS; i++) s_sessions[i].id[0] = '\0';
+    unlock();
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}

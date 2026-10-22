@@ -137,9 +137,6 @@ public class MetaSearchService implements ServletContextListener {
 
 	/**
 	 * Look up user comments for the given phone number.
-	 * 
-	 * @param bot
-	 *        Whether a bot requested the info.
 	 */
 	public List<UserComment> fetchComments(PhoneNumer phoneId, String dialPrefix) {
 		return createSearch(phoneId, dialPrefix).search().getComments();
@@ -227,7 +224,7 @@ public class MetaSearchService implements ServletContextListener {
 		scheduler.contextInitialized(null);
 		searchService.contextInitialized(null);
 		String phoneText = args[0];
-		PhoneNumer number = NumberAnalyzer.parsePhoneNumber(phoneText);
+		PhoneNumer number = NumberAnalyzer.parsePhoneNumber(phoneText, NumberAnalyzer.GERMAN_DIAL_PREFIX);
 		if (number == null) {
 			System.err.println("Invalid number: " + phoneText);
 			return;

@@ -3,7 +3,7 @@
 	"info": {
 		"title": "PhoneBlock API",
 		"description": "Access to the PhoneBlock database for third-party tools. Please use the test installation at https://phoneblock.net/pb-test/api/ for testing purpose!",
-		"version": "v1.3.4"
+		"version": "v1.7.0"
 	},
 	"servers": [
 		{
@@ -13,43 +13,31 @@
 			"url": "https://phoneblock.net/phoneblock/api"
 		}
 	],
-
 	"paths": {
 		"/num/{num}": {
 			"get": {
 				"summary": "Checks whether the given phone number in on the blocklist.",
+				"description": "The calling phone number is sent in plaintext — the server learns which number the authenticated user is asking about. For a privacy-preserving alternative that hides the queried number from the server, use the k-anonymity prefix lookup at /check-prefix.\n\nAuthentication is optional on this endpoint. When the request carries a valid bearer token, the response additionally honors the user's personal blocklist/whitelist for that number and the `userComment` field is populated from the user's own previously-submitted comment (if any).",
 				"responses": {
 					"200": {
 						"description": "Checks whether the given phone number is in the PhoneBlock database.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"phone": {
-											"type": "string"
-										},
-										"votes": {
-											"type": "integer"
-										},
-										"rating": {
-											"type": "string",
-											"enum": [
-												"A_LEGITIMATE",
-												"B_MISSED",
-												"C_PING",
-												"D_POLL",
-												"E_ADVERTISING",
-												"F_GAMBLE",
-												"G_FRAUD"
-											]
-										}
-									}
+									"$ref": "#/components/schemas/PhoneInfo"
 								},
 								"example": {
-									"phone": "0123456789",
+									"phone": "+49123456789",
 									"votes": 42,
-									"rating": "C_POLL"
+									"votesWildcard": 120,
+									"rating": "C_POLL",
+									"whiteListed": false,
+									"blackListed": false,
+									"archived": false,
+									"dateAdded": 1700000000000,
+									"lastUpdate": 1710000000000,
+									"label": "(DE) 0123 456789",
+									"location": "Berlin"
 								}
 							}
 						}
@@ -80,7 +68,10 @@
 					"default": "json",
 					"schema": {
 						"type": "string",
-						"enum": ["json", "xml"]
+						"enum": [
+							"json",
+							"xml"
+						]
 					}
 				}
 			]
@@ -88,38 +79,27 @@
 		"/check": {
 			"get": {
 				"summary": "Checks a phone number hash against the SPAM database. This API provides better privacy than the direct lookup with the phone number.",
+				"description": "Clients hash the calling number locally with SHA1 and send only the hash, so the server never sees the plaintext number. For maximum privacy — where the server cannot link the authenticated user to a specific number at all — use /check-prefix (k-anonymity prefix lookup) instead: the full SHA1 still uniquely identifies the queried number against a rainbow table.",
 				"responses": {
 					"200": {
-						"description": "Checks whether the phone number with the given SHA1 hash is in the PhoneBlock database.",
+						"description": "Checks whether the phone number with the given SHA1 hash is in the PhoneBlock database. If the exact number is not found but prefix hashes are provided, range-based detection is attempted.",
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"phone": {
-											"type": "string"
-										},
-										"votes": {
-											"type": "integer"
-										},
-										"rating": {
-											"type": "string",
-											"enum": [
-												"A_LEGITIMATE",
-												"B_MISSED",
-												"C_PING",
-												"D_POLL",
-												"E_ADVERTISING",
-												"F_GAMBLE",
-												"G_FRAUD"
-											]
-										}
-									}
+									"$ref": "#/components/schemas/PhoneInfo"
 								},
 								"example": {
-									"phone": "0123456789",
+									"phone": "+49123456789",
 									"votes": 42,
-									"rating": "C_POLL"
+									"votesWildcard": 120,
+									"rating": "C_POLL",
+									"whiteListed": false,
+									"blackListed": false,
+									"archived": false,
+									"dateAdded": 1700000000000,
+									"lastUpdate": 1710000000000,
+									"label": "(DE) 0123 456789",
+									"location": "Berlin"
 								}
 							}
 						}
@@ -144,6 +124,24 @@
 					}
 				},
 				{
+					"name": "prefix10",
+					"in": "query",
+					"description": "Optional hex-encoded SHA1 hash (40 hex digits) of the phone number with the last digit removed. Used for range-based spam detection when the exact number is not in the database.",
+					"required": false,
+					"schema": {
+						"type": "string"
+					}
+				},
+				{
+					"name": "prefix100",
+					"in": "query",
+					"description": "Optional hex-encoded SHA1 hash (40 hex digits) of the phone number with the last two digits removed. Used for range-based spam detection when the exact number is not in the database.",
+					"required": false,
+					"schema": {
+						"type": "string"
+					}
+				},
+				{
 					"name": "format",
 					"in": "query",
 					"description": "The format to return.",
@@ -151,7 +149,135 @@
 					"default": "json",
 					"schema": {
 						"type": "string",
-						"enum": ["json", "xml"]
+						"enum": [
+							"json",
+							"xml"
+						]
+					}
+				}
+			]
+		},
+		"/check-prefix": {
+			"get": {
+				"summary": "Privacy-preserving k-anonymity lookup against the SPAM database.",
+				"description": "Instead of a full SHA1 hash (as used by /check) the client sends only the first 4 or more hex characters of the hash. The server responds with every matching entry so the client can match locally — the server never learns which specific number the client was asking about. Optional prefix10/prefix100 parameters enable range-based spam detection. When a match is on the user's personal block- or whitelist, the server merges that information into the returned entry (flags 'blackListed' / 'whiteListed').\n\nFair-use contribution: because this endpoint hides which number the client asked about, the server no longer sees activity data that it needs to keep community blocklists tailored (especially space-constrained variants for devices like Fritz!Box routers). Well-behaved clients that get a positive local match are expected to report the plaintext calling number back via POST /report-call/{phone}, which lets the server increment the call counter without having to learn the full set of queried numbers.",
+				"responses": {
+					"200": {
+						"description": "All entries whose SHA1 hash starts with the supplied prefix(es).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PrefixCheckResult"
+								},
+								"example": {
+									"numbers": [
+										{
+											"phone": "+49123456789",
+											"votes": 42,
+											"rating": "C_POLL",
+											"whiteListed": false,
+											"blackListed": false,
+											"archived": false,
+											"dateAdded": 1700000000000,
+											"lastUpdate": 1710000000000,
+											"label": "(DE) 0123 456789",
+											"location": "Berlin"
+										}
+									],
+									"range10":  [ { "prefix": "+4912345678", "votes": 24, "cnt": 5 } ],
+									"range100": [ { "prefix": "+491234567",  "votes": 78, "cnt": 12 } ]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Missing 'sha1' parameter, or a prefix value is not between 4 and 40 hex characters (even length)."
+					},
+					"401": {
+						"description": "Authentication required — unlike the cache-friendly HIBP-style endpoints this API requires a bearer token. The server must know the user to apply personal block/whitelist entries, and authenticating individual queries does not weaken privacy because the hash prefix alone covers thousands of candidate numbers. Only API keys are accepted: session cookies and Basic auth (username/password) are rejected for this endpoint so that only machine clients holding a dedicated token can reach it."
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"parameters": [
+				{
+					"name": "sha1",
+					"in": "query",
+					"description": "Hex prefix of the SHA1 hash of the phone number (4–40 hex characters, even length). 4 hex characters (16 bit) keep on average ~3000 plausible German numbers per bucket and are the recommended minimum. Longer prefixes are accepted — 40 characters is equivalent to an exact lookup like /check.",
+					"required": true,
+					"schema": {
+						"type": "string",
+						"example": "3d1d"
+					}
+				},
+				{
+					"name": "prefix10",
+					"in": "query",
+					"description": "Optional hex prefix (4–40 hex characters, even length) of the SHA1 hash of the phone number with the last digit removed. Needed for 10-digit range-based spam detection.",
+					"required": false,
+					"schema": {
+						"type": "string"
+					}
+				},
+				{
+					"name": "prefix100",
+					"in": "query",
+					"description": "Optional hex prefix (4–40 hex characters, even length) of the SHA1 hash of the phone number with the last two digits removed. Needed for 100-digit range-based spam detection.",
+					"required": false,
+					"schema": {
+						"type": "string"
+					}
+				},
+				{
+					"name": "format",
+					"in": "query",
+					"description": "The format to return.",
+					"required": false,
+					"default": "json",
+					"schema": {
+						"type": "string",
+						"enum": [
+							"json",
+							"xml"
+						]
+					}
+				}
+			]
+		},
+		"/report-call/{phone}": {
+			"post": {
+				"summary": "Report an incoming SPAM call for blocklist-tailoring statistics.",
+				"description": "Intended to be invoked after a client (e.g. a light-weight device that uses /check-prefix) has identified an incoming call as SPAM. Increments NUMBERS.CALLS and refreshes NUMBERS.LASTPING for known blocklist numbers so that the server knows which numbers are currently active and can select them for space-constrained tailored blocklists.\n\nThis is not a rating — /rate accepts at most one rating per (user, number); /report-call accepts many events for the same number and exists to measure activity, not opinion.\n\nAbuse control: every user may contribute at most 20 reports to the global counter per UTC day. Further reports on the same day still appear in the user's own call history but do not move the global counter.\n\nReports for numbers that are not in the blocklist database are silently accepted but have no effect — the server never creates new rows from report-call input.",
+				"responses": {
+					"204": {
+						"description": "Report accepted. The body is empty. The response does not tell whether the number was in the database or whether the global counter was actually updated — that is by design, so clients cannot probe the blocklist contents via this endpoint."
+					},
+					"400": {
+						"description": "Missing or invalid phone number in the URL."
+					},
+					"401": {
+						"description": "Authentication required. Only API keys (bearer tokens with the 'rate' privilege) are accepted; session cookies and Basic auth are rejected for this endpoint."
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"parameters": [
+				{
+					"name": "phone",
+					"in": "path",
+					"description": "The calling phone number in international format. To avoid URL-encoding the leading '+', clients may equivalently send the legacy '00'-prefix form (e.g. '0049301234567' instead of '+49301234567').",
+					"required": true,
+					"schema": {
+						"type": "string",
+						"example": "0049301234567"
 					}
 				}
 			]
@@ -165,32 +291,30 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"type": "object",
-									"properties": {
-										"phone": {
-											"type": "string"
-										},
-										"votes": {
-											"type": "integer"
-										},
-										"rating": {
-											"type": "string",
-											"enum": [
-												"A_LEGITIMATE",
-												"B_MISSED",
-												"C_PING",
-												"D_POLL",
-												"E_ADVERTISING",
-												"F_GAMBLE",
-												"G_FRAUD"
-											]
-										}
-									}
+									"$ref": "#/components/schemas/SearchResult"
 								},
 								"example": {
-									"phone": "0123456789",
-									"votes": 42,
-									"rating": "C_POLL"
+									"phoneId": "⚡0123456789",
+									"info": {
+										"phone": "+49123456789",
+										"votes": 42,
+										"votesWildcard": 120,
+										"rating": "C_POLL",
+										"whiteListed": false,
+										"blackListed": false,
+										"archived": false,
+										"dateAdded": 1700000000000,
+										"lastUpdate": 1710000000000,
+										"label": "(DE) 0123 456789",
+										"location": "Berlin"
+									},
+									"topRating": "G_FRAUD",
+									"ratings": {
+										"G_FRAUD": 30,
+										"E_ADVERTISING": 12
+									},
+									"searches": [0, 1, 3, 5, 2, 0, 0, 0, 0, 0, 0, 0],
+									"aiSummary": "Aggressive spam caller attempting fraud."
 								}
 							}
 						}
@@ -221,18 +345,29 @@
 					"default": "json",
 					"schema": {
 						"type": "string",
-						"enum": ["json", "xml"]
+						"enum": [
+							"json",
+							"xml"
+						]
 					}
 				}
 			]
 		},
 		"/blocklist": {
 			"get": {
-				"summary": "Retrieves the current list of blocked phone numbers",
+				"summary": "Retrieves the blocklist with optional incremental synchronization",
+				"description": "Returns all active phone numbers from the blocklist with their published vote buckets (2, 4, 10, 20, 50, 100). Vote values are frozen per blocklist version; a number is re-published only when it crosses a bucket boundary, so the same version always serves identical data. Numbers below the server's minimum vote threshold are excluded from the full blocklist and returned with votes=0 in incremental updates (indicating removal). When 'since' is omitted, returns the complete blocklist. When 'since' is provided, returns only changes since that version (incremental sync). Entries with votes=0 indicate the number should be removed from the client's local blocklist.\n\n**Important:** This endpoint returns only the community-maintained blocklist data. It does NOT include user-specific personalizations (personal blacklist/whitelist). For call filtering, clients must check BOTH the community blocklist AND the user's personal black/whitelist entries (retrieved via /api/blacklist and /api/whitelist). Personal whitelist entries should override community blocklist entries, and personal blacklist entries should block calls regardless of community ratings.\n\n**Rate Limits:** To avoid excessive server load, clients should limit full synchronization (without 'since' parameter) to a maximum of once per month. Incremental synchronization (with 'since' parameter) should be performed at most once per day. Clients exceeding these limits may be subject to rate limiting.\n\n**Implementation:** Perform an initial full sync to retrieve the complete blocklist and its version number. Store this data locally and save the version number. For subsequent updates, use the saved version number in the 'since' parameter to retrieve only changes. Apply the incremental updates to your local copy: add/update entries with votes > 0, remove entries with votes = 0. After each sync, update your saved version number to the one returned in the response.",
 				"responses": {
 					"200": {
-						"description": "Retrieves all currently blocked phone numbers with corresponding information from the PhoneBlock database.",
+						"description": "Returns all active phone numbers from the PhoneBlock database with their published vote buckets. Numbers with votes=0 indicate removal. When `format=binary` is requested the response is a compact on-device binary file (see the `application/octet-stream` entry below) intended for memory-constrained clients such as the PhoneBlock dongle. The binary form carries one list per request, selected by the `type` parameter: `community` returns the shared blocklist (filtered server-side by the authenticated user's `minVotes`), `personal` returns the user's black/white overrides. The dongle fetches both per sync and writes them as separate files. `since` is not supported with `format=binary`.",
 						"content": {
+							"application/octet-stream": {
+								"schema": {
+									"type": "string",
+									"format": "binary",
+									"description": "Binary blocklist file (magic `PBBL`, version 1). 16-byte little-endian header (magic, version, prefix-length bitmap, exact-record count, prefix-record count) followed by two record sections: exact entries, then prefix wildcards. Each record is an 8-byte little-endian uint64 packing a 56-bit base-11 key plus a black/white payload bit; exact-vs-wildcard is implied by which section holds the record. Records are sorted unsigned-ascending within each section."
+								}
+							},
 							"application/json": {
 								"schema": {
 									"type": "object",
@@ -258,26 +393,37 @@
 														]
 													},
 													"votes": {
-														"type": "integer"
+														"type": "integer",
+														"description": "Published vote bucket floor (one of 2, 4, 10, 20, 50, 100). Votes are quantized to these buckets at publication time and stay constant between blocklist versions; a number is re-published only when it crosses a bucket boundary. A value of 0 indicates the number should be removed from the client's local blocklist."
+													},
+													"lastActivity": {
+														"type": "integer",
+														"format": "int64",
+														"description": "Timestamp (milliseconds since epoch) of the last activity for this number"
 													}
 												}
 											}
+										},
+										"version": {
+											"type": "integer",
+											"description": "Current version of the blocklist for incremental synchronization"
 										}
 									}
 								},
 								"example": {
 									"numbers": [
 										{
-											"phone": "0123456789",
+											"phone": "+49123456789",
 											"rating": "G_FRAUD",
 											"votes": 4
 										},
 										{
-											"phone": "0456789123",
+											"phone": "+390456789123",
 											"rating": "F_GAMBLE",
-											"votes": 8
+											"votes": 10
 										}
-									]
+									],
+									"version": 42
 								}
 							}
 						}
@@ -292,25 +438,81 @@
 			},
 			"parameters": [
 				{
-					"name": "minVotes",
+					"name": "since",
 					"in": "query",
-					"description": "The minimum votes for a number to be added to the blocklist.",
+					"description": "Optional version number for incremental synchronization. When provided, returns only changes since the specified version. Entries with votes=0 indicate the number dropped below the minimum threshold and should be removed from the client's local blocklist.",
 					"required": false,
-					"default": "4",
+					"schema": {
+						"type": "integer"
+					}
+				},
+				{
+					"name": "limit",
+					"in": "query",
+					"description": "Heat-ranked variant for space-constrained clients (Fritz!Box phonebook, dongle local blocklist). When provided, returns at most this many entries — the currently-loudest spam numbers above the minimum-votes threshold, ordered by current activity. A once-loud-now-silent number drops out so a currently-active one takes its slot. This view is NOT compatible with incremental sync: passing both 'limit' and 'since' returns HTTP 400. The set of included numbers changes whenever Heat shifts, and there is no per-entry version stamp for 'evicted from the top-N' — clients should refetch the whole list on a schedule (e.g. daily). The server caps the requested limit at 5000.",
+					"required": false,
 					"schema": {
 						"type": "integer",
-						"minimum": 2
+						"minimum": 1,
+						"maximum": 5000
 					}
 				},
 				{
 					"name": "format",
 					"in": "query",
-					"description": "The format to return.",
+					"description": "The format to return. `binary` selects the compact on-device file format; it is only supported for full snapshots (no `since` parameter).",
 					"required": false,
 					"default": "json",
 					"schema": {
 						"type": "string",
-						"enum": ["json", "xml"]
+						"enum": [
+							"json",
+							"xml",
+							"binary"
+						]
+					}
+				},
+				{
+					"name": "type",
+					"in": "query",
+					"description": "Selects which list to return when `format=binary`. `community` (default) returns the shared blocklist; `personal` returns the authenticated user's black/white list, including the wildcard prefixes of both (encoded in the file's prefix section). Ignored for `json`/`xml`.",
+					"required": false,
+					"schema": {
+						"type": "string",
+						"enum": [
+							"community",
+							"personal"
+						]
+					}
+				},
+				{
+					"name": "minDirect",
+					"in": "query",
+					"description": "Only for `format=binary&type=community`. Exact-entry threshold: a number is included when its net (decay-aware, spam minus legit) vote count is at least this value — the on-device client's `min_direct_votes` setting. Defaults to the account's minVotes when omitted, and is floored at the server's published minimum-visible-votes. Encoding the client's own threshold makes the downloaded list match what the live `/num` API decision would yield.",
+					"required": false,
+					"schema": {
+						"type": "integer",
+						"minimum": 1
+					}
+				},
+				{
+					"name": "minRange",
+					"in": "query",
+					"description": "Only for `format=binary&type=community`. Wildcard threshold: an aggregation block (10-/100-range) is included when its net block evidence (spam minus legit, the same magnitude the `/num` API reports as `votesWildcard`) is at least this value — the on-device client's `min_range_votes` setting. A value below 1 disables range/wildcard blocking entirely (no prefix entries emitted). Defaults to `minDirect` when omitted.",
+					"required": false,
+					"schema": {
+						"type": "integer",
+						"minimum": 0
+					}
+				},
+				{
+					"name": "maxBytes",
+					"in": "query",
+					"description": "Only for `format=binary&type=community`. Storage budget for the encoded file, in bytes — typically the on-device client's free flash. The server keeps every qualifying wildcard block and the whole whitelist (small), then truncates the exact spam numbers, keeping the highest-ranked by region-aware Heat (most currently-active spam in the account's dial region), so the file fits the budget. Numbers dropped by the cap still resolve correctly on the device, which falls back to the live `/num` API on a local miss. The value is snapped down to a fixed grid (64/128/256/384/512 KB) so it never exceeds the budget and stays cacheable; a value below the smallest bucket still receives it. Defaults to 256 KB when omitted.",
+					"required": false,
+					"schema": {
+						"type": "integer",
+						"minimum": 1
 					}
 				}
 			]
@@ -336,7 +538,7 @@
 								},
 								"example": {
 									"session": "ehWfZJpRTJ9dQLemiVgY",
-									"captcha": "data:image/png;base64,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"
+									"captcha": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPoAAAA8CAIAAADAPzDDAAAizElEQVR4Xu3deVyN+f/w8fdpX1Ra0EYpSjEhMogosrRIoVCKbNkZ2xCyFIqsmXJJvoTQlkSy..."
 								}
 							}
 						}
@@ -488,7 +690,10 @@
 					"default": "json",
 					"schema": {
 						"type": "string",
-						"enum": ["json", "xml"]
+						"enum": [
+							"json",
+							"xml"
+						]
 					}
 				}
 			]
@@ -515,7 +720,7 @@
 								}
 							},
 							"example": {
-								"phone": "0123456789",
+								"phone": "+49123456789",
 								"rating": "C_PING",
 								"comment": "Anrufer hat sofort aufgelegt."
 							}
@@ -605,9 +810,876 @@
 				]
 			},
 			"parameters": []
+		},
+		"/account": {
+			"get": {
+				"summary": "Retrieves the current user's account settings.",
+				"description": "Returns language preference, country dial prefix, display name, and email address for the authenticated user.",
+				"responses": {
+					"200": {
+						"description": "Account settings retrieved successfully.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AccountSettings"
+								},
+								"example": {
+									"lang": "de-DE",
+									"dialPrefix": "+49",
+									"displayName": "John Doe",
+									"email": "john.doe@example.com",
+									"minVotes": 4,
+									"wildcards": false
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "User settings not found.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "User settings not found"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"put": {
+				"summary": "Updates the current user's account settings.",
+				"description": "Updates language preference, country dial prefix, or display name. All fields are optional. If countryCode is provided, the server converts it to the corresponding dial prefix.",
+				"requestBody": {
+					"description": "Account settings to update. All fields are optional.",
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateAccountRequest"
+							},
+							"examples": {
+								"updateLanguage": {
+									"summary": "Update language preference",
+									"value": {
+										"lang": "en-US"
+									}
+								},
+								"updateCountryCode": {
+									"summary": "Update country via country code",
+									"value": {
+										"countryCode": "DE"
+									}
+								},
+								"updateDialPrefix": {
+									"summary": "Update dial prefix directly",
+									"value": {
+										"dialPrefix": "+49"
+									}
+								},
+								"updateAll": {
+									"summary": "Update all fields",
+									"value": {
+										"lang": "de-DE",
+										"countryCode": "DE",
+										"displayName": "John Doe"
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Account settings updated successfully. Returns the updated settings.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AccountSettings"
+								},
+								"example": {
+									"lang": "de-DE",
+									"dialPrefix": "+49",
+									"displayName": "John Doe",
+									"email": "john.doe@example.com",
+									"minVotes": 4,
+									"wildcards": false
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request. Returns error message describing the validation failure.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"examples": {
+									"invalidLang": {
+										"value": "Invalid language tag format. Expected format: 'de' or 'en-US'"
+									},
+									"invalidCountryCode": {
+										"value": "Invalid country code. Expected ISO 3166-1 alpha-2 format (e.g., 'DE', 'US', 'BR')"
+									},
+									"invalidDialPrefix": {
+										"value": "Invalid dial prefix format. Expected format: '+XX' (e.g., '+49', '+1', '+351')"
+									},
+									"emptyDisplayName": {
+										"value": "Display name must not be empty"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"parameters": []
+		},
+		"/blacklist": {
+			"get": {
+				"summary": "Retrieves the current user's personalized blacklist.",
+				"description": "Returns a list of phone numbers that the user has explicitly marked as blocked (blacklist). Numbers are added to the blacklist by rating them via the POST /api/rate endpoint with spam ratings such as E_ADVERTISING, F_GAMBLE, or G_FRAUD. This endpoint only retrieves the list; use the rating API to add numbers.",
+				"responses": {
+					"200": {
+						"description": "Blocklist retrieved successfully.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/NumberList"
+								},
+								"example": {
+									"numbers": [
+										{
+											"phone": "+491234567890",
+											"label": "(DE) 01234 567890",
+											"comment": "Spam caller",
+											"rating": "G_FRAUD",
+											"created": 1709913600000
+										},
+										{
+											"phone": "+491234567891",
+											"label": "(DE) 01234 567891",
+											"comment": null,
+											"rating": null,
+											"created": 1709913600000
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "User not found.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "User not found"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			}
+		},
+		"/blacklist/{phone}": {
+			"delete": {
+				"summary": "Removes a phone number from the user's blacklist.",
+				"description": "Deletes the specified phone number from the user's personalized blacklist. To add numbers to the blacklist, use POST /api/rate.",
+				"parameters": [
+					{
+						"name": "phone",
+						"in": "path",
+						"required": true,
+						"description": "The phone number to remove from the blacklist (e.g., +491234567890)",
+						"schema": {
+							"type": "string"
+						},
+						"example": "+491234567890"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Phone number removed from blacklist successfully."
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "Phone number not found in personalization list.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Phone number not found in personalization list"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"put": {
+				"summary": "Updates the comment for a phone number in the user's blacklist.",
+				"description": "Updates the user's comment for the specified phone number in their personalized blacklist.",
+				"parameters": [
+					{
+						"name": "phone",
+						"in": "path",
+						"required": true,
+						"description": "The phone number to update the comment for (e.g., +491234567890)",
+						"schema": {
+							"type": "string"
+						},
+						"example": "+491234567890"
+					}
+				],
+				"requestBody": {
+					"description": "Updated comment for the phone number",
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PersonalizedNumber"
+							},
+							"example": {
+								"phone": "+491234567890",
+								"comment": "Updated spam caller description"
+							}
+						}
+					}
+				},
+				"responses": {
+					"204": {
+						"description": "Comment updated successfully."
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "Phone number not found in personalization list.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Phone number not found in personalization list"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			}
+		},
+		"/whitelist": {
+			"get": {
+				"summary": "Retrieves the current user's personalized whitelist.",
+				"description": "Returns a list of phone numbers that the user has explicitly marked as legitimate (whitelist). Numbers are added to the whitelist by rating them via the POST /api/rate endpoint with the A_LEGITIMATE rating. This endpoint only retrieves the list; use the rating API to add numbers.",
+				"responses": {
+					"200": {
+						"description": "Whitelist retrieved successfully.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/NumberList"
+								},
+								"example": {
+									"numbers": [
+										{
+											"phone": "+491234567893",
+											"label": "(DE) 01234 567893",
+											"comment": "My doctor",
+											"rating": "A_LEGITIMATE",
+											"created": 1709913600000
+										},
+										{
+											"phone": "+491234567894",
+											"label": "(DE) 01234 567894",
+											"comment": null,
+											"rating": null,
+											"created": 1709913600000
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "User not found.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "User not found"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			}
+		},
+		"/whitelist/{phone}": {
+			"delete": {
+				"summary": "Removes a phone number from the user's whitelist.",
+				"description": "Deletes the specified phone number from the user's personalized whitelist. To add numbers to the whitelist, use POST /api/rate.",
+				"parameters": [
+					{
+						"name": "phone",
+						"in": "path",
+						"required": true,
+						"description": "The phone number to remove from the whitelist (e.g., +491234567893)",
+						"schema": {
+							"type": "string"
+						},
+						"example": "+491234567893"
+					}
+				],
+				"responses": {
+					"204": {
+						"description": "Phone number removed from whitelist successfully."
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "Phone number not found in personalization list.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Phone number not found in personalization list"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			},
+			"put": {
+				"summary": "Updates the comment for a phone number in the user's whitelist.",
+				"description": "Updates the user's comment for the specified phone number in their personalized whitelist.",
+				"parameters": [
+					{
+						"name": "phone",
+						"in": "path",
+						"required": true,
+						"description": "The phone number to update the comment for (e.g., +491234567893)",
+						"schema": {
+							"type": "string"
+						},
+						"example": "+491234567893"
+					}
+				],
+				"requestBody": {
+					"description": "Updated comment for the phone number",
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PersonalizedNumber"
+							},
+							"example": {
+								"phone": "+491234567893",
+								"comment": "Updated doctor's office description"
+							}
+						}
+					}
+				},
+				"responses": {
+					"204": {
+						"description": "Comment updated successfully."
+					},
+					"401": {
+						"description": "If no or invalid credentials have been provided.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Please provide login credentials."
+							}
+						}
+					},
+					"404": {
+						"description": "Phone number not found in personalization list.",
+						"content": {
+							"text/plain": {
+								"schema": {
+									"type": "string"
+								},
+								"example": "Phone number not found in personalization list"
+							}
+						}
+					}
+				},
+				"security": [
+					{
+						"APIKey": []
+					}
+				]
+			}
 		}
 	},
 	"components": {
+		"schemas": {
+			"RangeMatch": {
+				"type": "object",
+				"description": "A single aggregated SPAM range matching a hash prefix in a PrefixCheckResult.",
+				"properties": {
+					"prefix": {
+						"type": "string",
+						"description": "The plaintext prefix of the aggregated range (e.g. '+4930123')."
+					},
+					"votes": {
+						"type": "integer",
+						"description": "Aggregated number of SPAM votes for all numbers in this range."
+					},
+					"cnt": {
+						"type": "integer",
+						"description": "Number of distinct SPAM numbers known for this range."
+					}
+				}
+			},
+			"PrefixCheckResult": {
+				"type": "object",
+				"description": "Response of the privacy-preserving k-anonymity prefix lookup. Each array contains every entry whose SHA1 hash starts with the corresponding prefix from the request; the client matches them against its own (locally-hashed) number to decide whether the caller is on the blocklist.",
+				"properties": {
+					"numbers": {
+						"type": "array",
+						"description": "Phone numbers whose SHA1 hash starts with the 'sha1' prefix from the request. The per-number 'votes' is the raw direct-vote count — the client computes the wildcard-combined value locally from 'range10' / 'range100'.",
+						"items": {
+							"$ref": "#/components/schemas/PhoneInfo"
+						}
+					},
+					"range10": {
+						"type": "array",
+						"description": "10-digit range aggregations whose SHA1 hash starts with the 'prefix10' prefix from the request. Only blocks that have crossed the server-side wildcard-vote threshold are returned, matching the behavior of /check; sparsely-populated ranges are filtered out. Empty if no 'prefix10' was supplied or no qualifying match was found.",
+						"items": {
+							"$ref": "#/components/schemas/RangeMatch"
+						}
+					},
+					"range100": {
+						"type": "array",
+						"description": "100-digit range aggregations whose SHA1 hash starts with the 'prefix100' prefix from the request. Only blocks that have crossed the server-side wildcard-vote threshold are returned, matching the behavior of /check; sparsely-populated ranges are filtered out. Empty if no 'prefix100' was supplied or no qualifying match was found.",
+						"items": {
+							"$ref": "#/components/schemas/RangeMatch"
+						}
+					}
+				}
+			},
+			"PhoneInfo": {
+				"type": "object",
+				"description": "Information about a phone number published by the PhoneBlock API.",
+				"properties": {
+					"phone": {
+						"type": "string",
+						"description": "The number being requested."
+					},
+					"votes": {
+						"type": "integer",
+						"description": "Decay-aware spam-vote equivalent for this number. Internally derived from an exponentially-weighted moving average of the spam-vote evidence, with a ~4-month half-life, minus the corresponding 'legitimate' evidence. A 10-vote spam number from this week therefore reads votes ≈ 10; the same number after four months reads votes ≈ 5; after a year reads votes ≈ 1. Clients filtering 'votes >= minVotes AND !archived' therefore see a smooth decay through the threshold instead of a binary archive-flip when the number stops being active."
+					},
+					"votesWildcard": {
+						"type": "integer",
+						"description": "Decay-aware spam-vote equivalent for the phone number's range. Derived from the per-block spam evidence at the /10 and /100 aggregation levels — whichever value is larger after decay — so a spam range that is still being abused keeps a high 'votesWildcard', a range the spammer has moved on from fades within a few months. 'votesWildcard' exceeds 'votes' when neighbouring numbers carry spam evidence too (the typical spammer-rotating-through-a-range case); it can be non-zero even when 'votes' is 0 for the specific number being asked about.\n\nHow ranges work: PhoneBlock groups reported numbers into 10-blocks (all numbers sharing every digit except the last) and 100-blocks (all numbers sharing every digit except the last two). Every spam vote feeds the per-number, per-10-block and per-100-block spam evidence flat. The wildcard view picks the larger of the two block-level decoded values."
+					},
+					"rating": {
+						"type": "string",
+						"description": "The rating for the requested phone number.",
+						"enum": [
+							"A_LEGITIMATE",
+							"B_MISSED",
+							"C_PING",
+							"D_POLL",
+							"E_ADVERTISING",
+							"F_GAMBLE",
+							"G_FRAUD"
+						]
+					},
+					"whiteListed": {
+						"type": "boolean",
+						"description": "Whether this number is on the global white list and therefore cannot receive votes."
+					},
+					"blackListed": {
+						"type": "boolean",
+						"description": "Whether this number is on the requesting user's personal block list. Only set in the /check endpoint response."
+					},
+					"archived": {
+						"type": "boolean",
+						"deprecated": true,
+						"description": "Deprecated and always false. Kept only for backwards compatibility with clients written against API v1.6.0 and earlier. The binary archive flag was replaced by the decay-aware 'votes' value: a number that stops being active now fades smoothly through the visibility threshold instead of flipping a separate 'archived' bit. New clients must rely on 'votes'/'heat' and ignore this field; it will be removed in a future API version."
+					},
+					"dateAdded": {
+						"type": "integer",
+						"format": "int64",
+						"description": "Date when this number was added to the SPAM database (in milliseconds since epoch)."
+					},
+					"lastUpdate": {
+						"type": "integer",
+						"format": "int64",
+						"description": "Date when the last report for this number was received (in milliseconds since epoch)."
+					},
+					"label": {
+						"type": "string",
+						"description": "The phone number formatted for local display (e.g., '(DE) 030 12345678').",
+						"nullable": true
+					},
+					"location": {
+						"type": "string",
+						"description": "The city or region from where the call originated (e.g., 'Berlin').",
+						"nullable": true
+					},
+					"userComment": {
+						"type": "string",
+						"description": "The comment that the requesting user previously stored for this number, or null. Only populated when the request is authenticated and a comment was previously submitted by the same user (e.g., via the /rate endpoint). This is the user's own note about the number, not a community comment.",
+						"nullable": true
+					},
+					"heat": {
+						"type": "number",
+						"format": "double",
+						"description": "Recent-activity rate in reports per day, from the confidence model. The current reports-per-day rate, derived from the decayed HEAT exponentially-weighted moving average at request time — how loud this number is right now, with a half-life of about two weeks. At a steady rate of r reports per day it converges to about r, so the value reads directly as that rate without needing to know the decay constant. Drives ranking on space-limited lists (Fritz!Box phonebook, dongle) and Heat-based archiving — it is NOT the spam-or-not signal; that is 'spamConfidence'."
+					},
+					"spamConfidence": {
+						"type": "integer",
+						"description": "Confidence (0-100) that this number is spam. Wilson lower bound on SPAM_EVIDENCE / (SPAM_EVIDENCE + LEGIT_EVIDENCE), with both inputs decayed to the request time on a ~4-month half-life. The evidence mass acts as the denominator, so two spam reports with no opposition read low ('maybe accidental'), a hotly-contested 1000-vs-998 number also reads low ('disputed'), and a 1000-with-no-opposition number reads high. High values therefore require both direction AND mass — independent of the cumulative 'votes' field, which has no mass component."
+					},
+					"calls": {
+						"type": "integer",
+						"description": "Total number of calls from this number that PhoneBlock has intercepted. A monotonic lifetime counter incremented once per intercepted call: a call answered by the cloud answer bot, or a call reported as blocked by the mobile app or dongle via /api/report-call. Unlike 'votes' and 'heat' this value does not decay; it reflects the cumulative protection PhoneBlock provided for this number."
+					}
+				}
+			},
+			"SearchResult": {
+				"type": "object",
+				"description": "Extensive information about a phone number including community ratings, comments, and search history.",
+				"properties": {
+					"phoneId": {
+						"type": "string",
+						"description": "The phone ID in database format."
+					},
+					"info": {
+						"$ref": "#/components/schemas/PhoneInfo"
+					},
+					"topRating": {
+						"type": "string",
+						"description": "The most common rating for this number.",
+						"enum": [
+							"A_LEGITIMATE",
+							"B_MISSED",
+							"C_PING",
+							"D_POLL",
+							"E_ADVERTISING",
+							"F_GAMBLE",
+							"G_FRAUD"
+						],
+						"nullable": true
+					},
+					"ratings": {
+						"type": "object",
+						"description": "Map of rating codes to vote counts.",
+						"additionalProperties": {
+							"type": "integer"
+						}
+					},
+					"comments": {
+						"type": "array",
+						"description": "User comments about this number.",
+						"items": {
+							"type": "object",
+							"properties": {
+								"rating": {
+									"type": "string",
+									"enum": [
+										"A_LEGITIMATE",
+										"B_MISSED",
+										"C_PING",
+										"D_POLL",
+										"E_ADVERTISING",
+										"F_GAMBLE",
+										"G_FRAUD"
+									]
+								},
+								"comment": {
+									"type": "string"
+								},
+								"created": {
+									"type": "integer",
+									"format": "int64",
+									"description": "Timestamp in milliseconds since epoch."
+								},
+								"up": {
+									"type": "integer",
+									"description": "Number of upvotes."
+								},
+								"down": {
+									"type": "integer",
+									"description": "Number of downvotes."
+								}
+							}
+						}
+					},
+					"searches": {
+						"type": "array",
+						"description": "Monthly search activity counts (12 entries, most recent first).",
+						"items": {
+							"type": "integer"
+						}
+					},
+					"aiSummary": {
+						"type": "string",
+						"description": "AI-generated summary of user comments about this number.",
+						"nullable": true
+					},
+					"relatedNumbers": {
+						"type": "array",
+						"description": "Related phone numbers in the same range.",
+						"items": {
+							"type": "string"
+						}
+					},
+					"prev": {
+						"type": "string",
+						"description": "Previous phone number in the database.",
+						"nullable": true
+					},
+					"next": {
+						"type": "string",
+						"description": "Next phone number in the database.",
+						"nullable": true
+					}
+				}
+			},
+			"UpdateAccountRequest": {
+				"type": "object",
+				"description": "Request to update user account settings. All fields are optional.",
+				"properties": {
+					"lang": {
+						"type": "string",
+						"description": "Preferred language tag (e.g., 'de', 'en-US', 'pt-BR')",
+						"example": "de-DE",
+						"nullable": true
+					},
+					"dialPrefix": {
+						"type": "string",
+						"description": "User's country dial prefix (e.g., '+49', '+1', '+351')",
+						"example": "+49",
+						"nullable": true
+					},
+					"displayName": {
+						"type": "string",
+						"description": "User's display name",
+						"example": "John Doe",
+						"nullable": true
+					},
+					"countryCode": {
+						"type": "string",
+						"description": "ISO 3166-1 alpha-2 country code (e.g., 'DE', 'US', 'BR'). If provided, the server will convert it to the corresponding dial prefix.",
+						"example": "DE",
+						"nullable": true
+					}
+				}
+			},
+			"AccountSettings": {
+				"type": "object",
+				"description": "User account settings",
+				"properties": {
+					"lang": {
+						"type": "string",
+						"description": "Preferred language tag",
+						"example": "de-DE",
+						"nullable": true
+					},
+					"dialPrefix": {
+						"type": "string",
+						"description": "User's country dial prefix",
+						"example": "+49",
+						"nullable": true
+					},
+					"displayName": {
+						"type": "string",
+						"description": "User's display name",
+						"example": "John Doe",
+						"nullable": true
+					},
+					"email": {
+						"type": "string",
+						"description": "User's email address",
+						"example": "john.doe@example.com",
+						"nullable": true
+					},
+					"minVotes": {
+						"type": "integer",
+						"description": "Minimum confidence ('Mindest-Konfidenz') from the account settings: the number of votes a number needs before the user's devices treat it as SPAM. Clients without a setting of their own (e.g. a self-hosted answerbot) use this value.",
+						"example": 4
+					},
+					"wildcards": {
+						"type": "boolean",
+						"description": "Whether the account settings enable wildcard (number range) blocking.",
+						"example": false
+					}
+				}
+			},
+			"NumberList": {
+				"type": "object",
+				"description": "A list of phone numbers with optional comments (used for blacklist/whitelist responses)",
+				"properties": {
+					"numbers": {
+						"type": "array",
+						"description": "List of phone numbers with optional comments",
+						"items": {
+							"$ref": "#/components/schemas/PersonalizedNumber"
+						}
+					}
+				}
+			},
+			"PersonalizedNumber": {
+				"type": "object",
+				"description": "A phone number with optional user comment, display label, and rating",
+				"properties": {
+					"phone": {
+						"type": "string",
+						"description": "The phone number in international format",
+						"example": "+491234567890"
+					},
+					"label": {
+						"type": "string",
+						"description": "The phone number formatted for local display (e.g., '(DE) 01234 567890')",
+						"example": "(DE) 01234 567890",
+						"nullable": true
+					},
+					"comment": {
+						"type": "string",
+						"description": "User's comment for this number (may be null)",
+						"example": "Spam caller",
+						"nullable": true
+					},
+					"rating": {
+						"type": "string",
+						"description": "The user's personal rating for this number (may be null if no rating was given)",
+						"enum": [
+							"A_LEGITIMATE",
+							"B_MISSED",
+							"C_PING",
+							"D_POLL",
+							"E_ADVERTISING",
+							"F_GAMBLE",
+							"G_FRAUD"
+						],
+						"nullable": true
+					},
+					"created": {
+						"type": "integer",
+						"format": "int64",
+						"description": "Timestamp when this entry was added to the personalization list (milliseconds since epoch).",
+						"example": 1709913600000
+					}
+				},
+				"required": [
+					"phone"
+				]
+			}
+		},
 		"securitySchemes": {
 			"PhoneBlockUser": {
 				"description": "A PhoneBlock user name and its password. The method of authorization is deprecated. Better use an API key.",

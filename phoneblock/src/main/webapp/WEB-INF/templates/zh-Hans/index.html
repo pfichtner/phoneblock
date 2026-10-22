@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head(title=#{page.index.title})}"></head>
+<head th:replace="~{fragments/page :: head(titleKey='page.index.title', descriptionKey='page.index.description', titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
@@ -8,81 +8,228 @@
 <section class="section">
 	<div class="content">
 		<div class="logo-animation">
-			<img alt="PhoneBlock 徽标" data-tx="t0015" th:src="@{/assets/img/animation.svg}"/>
+			<img alt="PhoneBlock 徽标" data-tx="t0015:5b0e8765" th:src="@{/assets/img/animation.svg}"/>
 		</div>
 
-		<h1 data-tx="t0001">自动拒绝不受欢迎的来电</h1>
+		<h1 data-tx="t0001:79729e8b">自动拒绝不受欢迎的来电</h1>
 
-		<p data-tx="t0002">您的电话号码是否也落入了不法地址商的手中，您是否经常接到恼人的电话，希望 "优化 "您的电费账单，给您提供太阳能系统的建议，宣布另一个大奖或提供其他 "福利"？那么<b>PhoneBlock</b>正是您所需要的！</p>
+		<p data-tx="t0002:55e1cc1a">您的电话号码是否也落入了不法地址商的手中？您是否经常接到恼人的电话，想要 "优化 "您的电费账单，给您提供太阳能系统方面的建议，或者宣布另一个大奖？那么<b>PhoneBlock</b>正是您所需要的！</p>
+
+		<div th:replace="~{fragments/page :: buttons}"></div>
+
+		<h2 data-tx="t0016:855ca724">为什么选择 PhoneBlock？</h2>
+
+		<div class="columns is-multiline">
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-shield-alt fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0017:372c266b">自动保护</h3>
+					<p data-tx="t0018:939eaea">您的路由器或智能手机会自动阻止垃圾电话，而您无需做任何事情。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-users fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0019:e1e1d3fb">社区力量</h3>
+					<p data-tx="t0020:c0dea87">每天都有成千上万的用户报告新的垃圾号码。只要我们齐心协力，就能保护自己免受恼人广告电话的骚扰。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-sync fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0021:403225f8">始终保持最新</h3>
+					<p data-tx="t0022:77377622">拦截列表会自动更新。新的垃圾邮件号码会立即被拦截。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-lock fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0023:5f4450bc">数据保护</h3>
+					<p data-tx="t0024:6b49a98"><a th:href="@{/link/github}">开源</a>和自托管。您的电话号码是散列的，没有人知道是谁在给您打电话。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-gift fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0025:5f4715c">免费</h3>
+					<p data-tx="t0026:a55c86e4">PhoneBlock 完全免费且无广告。由社区提供，为社区服务（您可以<a th:href="@{/support}">为运行捐款</a>）。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-cogs fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0027:754345bd">灵活</h3>
+					<p data-tx="t0053:91c8788c">可在<a th:href="@{/festnetz}">陆线</a>、<a th:href="@{/setup-android}">Android</a>、<a th:href="@{/setup-iphone}">iPhone</a>和<a th:href="@{/setup-switchboard}">电话系统</a>上运行，具体方式由您决定。</p>
+				</div>
+			</div>
+		</div>
+
+		<h2 data-tx="t0029:f316c4f9">就这么简单</h2>
 
 		<div class="columns">
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${fritzbox ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/anrufbeantworter}">
-			    <span class="icon">
-					<img th:src="@{/assets/img/ab/logo/ab-logo-white.svg}"/>
-			    </span>
-				<span data-tx="t0003">答录机</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium is-info is-fullwidth|" th:href="@{/setup}">
-			    <span class="icon">
-					<i class="fa-solid fa-phone"></i>
-			    </span>
-				<span data-tx="t0004">弗里茨！盒子电话簿</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${android ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-android}">
-			    <span class="icon">
-					<i class="fa-solid fa-mobile-screen"></i>
-			    </span>
-				<span data-tx="t0005">适用于安卓系统</span>
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${iphone ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-iphone}">
-			    <span class="icon">
-					<i class="fa-brands fa-apple"></i>
-			    </span>
-				<span data-tx="t0006">适用于 iPhone</span>
-			</a>
-		  </div>
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-download fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0030:365b45bb">1. 安装</h3>
+					<p data-tx="t0031:ca7700fd">选择你的平台，然后按照安装说明进行操作。只需几分钟。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-check-circle fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0032:3226e470">2. 设置</h3>
+					<p data-tx="t0033:d28ccabb">PhoneBlock 会加载当前黑名单并设置自动更新。</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-phone-slash fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0034:39c4cb5e">3. 受保护！</h3>
+					<p data-tx="t0035:460bd8e6">从现在起，垃圾电话将被自动拦截。您的手机终于可以保持安静了。</p>
+				</div>
+			</div>
 		</div>
 
-		<h2 data-tx="t0007">PhoneBlock 如何工作？</h2>
+		<h2 data-tx="t0036:7f1ed01c">选择您的平台</h2>
 
-		<p data-tx="t0008">PhoneBlock 是由 PhoneBlock 社区维护的一份涉嫌垃圾邮件的电话号码列表。<a th:href="@{/anrufbeantworter}">PhoneBlock应答机</a>会接受来自阻止列表上的来电者的呼叫，因此您的电话在接到这些呼叫时会保持静音。</p>
-		
-		<p data-tx="t0009">或者，您也可以将黑名单作为电话簿导入 "FRITZ！Box "互联网路由器，并阻止来自<a th:href="@{/setup}">专用电话簿</a>中号码的呼叫。您不必再手动阻止号码范围，因为您的 "Fritz！Box "每晚都会自动更新阻止列表。一旦某个号码被添加到黑名单中，FRITZ！Box 就会自动拒绝该号码的来电。不过，<a th:href="@{/anrufbeantworter}">应答机</a>是更好的解决方案，因为电话簿的容量有限，无法容纳阻止列表中的所有号码。</p>
+		<div class="columns is-multiline">
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-phone"></i></span>
+								<span data-tx="t0054:374baf20">固定电话</span>
+							</span>
+						</p>
+						<p data-tx="t0055:fa373b77">有三种变体可供选择：<a th:href="@{/dongle}">PhoneBlock 加密狗</a>，作为路由器中的一个小 U 盘；<a th:href="@{/anrufbeantworter}">云应答机</a>，通过 Fritz！Box；或<a th:href="@{/setup}">Blocklist 电话簿</a>，作为 CardDAV 同步。哪种方式最适合您，取决于您的路由器、提供商和数据保护要求。</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${fritzbox ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/festnetz}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0056:f69b313">选择固定网络变体</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<p data-tx="t0010">如果由于该号码尚未添加到拦截列表中而仍然收到骚扰电话，您可以在 FRITZ！Box 中轻松拦截该<a th:href="@{/block}">号码</a>。为此，请直接在您的 Fritz 中的 PhoneBlock 通讯录中为不受欢迎的来电者创建一个条目！一旦您这样做了，您的FrizBox就会更新PhoneBlock社区所有成员的拦截列表，来自这个新号码的来电也会立即被拦截。这比直接在您的Fritz！Phone中封堵该号码要费时一些，但其优点是您可以保护整个PhoneBlock社区免受<a th:href="@{/status}">更多垃圾电话的骚扰</a>。</p>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-android"></i></span>
+								<span data-tx="t0057:aecec7cb">安卓</span>
+							</span>
+						</p>
+						<p data-tx="t0058:cee8e47c">使用 <a th:href="@{/setup-android}">PhoneBlock 应用程序</a>直接在您的 Android 手机上阻止垃圾电话。该应用程序会实时检查来电，并自动阻止已知的垃圾号码。您可以自行设置一个号码应阻止多少负面信息。</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${android ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-android}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0059:b0eb119f">设置安卓系统</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<h2 data-tx="t0011">有哪些要求？</h2>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-apple"></i></span>
+								<span data-tx="t0060:b21bebc5">iPhone</span>
+							</span>
+						</p>
+						<p data-tx="t0061:b45f7cac">在 iPhone 通讯录中加入 PhoneBlock 封锁列表，然后 iOS 会自动显示封锁列表中的来电者。<a th:href="@{/setup-iphone}">设置</a>通过 CardDAV 完成，iPhone 会自动更新列表。</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${iphone ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-iphone}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0062:c278f9d5">设置 iPhone</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<div class="fritzbox-position">
-			<a th:href="@{/link/fritzbox}"> <img alt="AVM Fritz！信箱 7590" data-tx="t0016" id="fritzbox" th:src="@{/assets/img/fritzbox.png}" width="200"/>
-			</a>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-asterisk"></i></span>
+								<span data-tx="t0063:9faa419a">电话系统</span>
+							</span>
+						</p>
+						<p data-tx="t0064:99335f28">将 PhoneBlock 集成到您的<a th:href="@{/setup-switchboard}">电话系统</a>或 PBX 中。拦截列表可以各种格式下载或通过 API 查询。是公司和专业电话系统的理想选择。</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-info is-medium" th:href="@{/setup-switchboard}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0065:aa28e976">设置电话系统</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 		</div>
-		
-		<p data-tx="t0012">PhoneBlock 可以与 AVM 的 <a th:href="@{/link/fritzbox}">"FRITZ!Box" 互联网路由器</a>结合使用，在 <a th:href="@{/setup}">"座机"</a>上阻止骚扰电话，或者直接在您的 <a th:href="@{/setup-android}">移动电话</a>上显示来电者是否可能是骚扰电话。</p>
-		
+
+		<h2 data-tx="t0047:5f8f8581">社区带来不同</h2>
+
 		<div class="columns">
-		  <div class="column is-half is-offset-one-quarter">
-			  <input id="context-path" th:value="${contextPath}" type="hidden"/>
-			<a class="button is-medium is-info is-fullwidth state-initial" href="#" id="search-fritzbox">
-				<span class="icon is-small is-left">
-					<i class="fa-solid fa-magnifying-glass"></i>
-				</span>
-				<span class="display-initial" data-tx="t0013">搜索 Fritz!Box</span>
-				<span class="display-searching" data-tx="t0017">等等...</span>
-				<span class="display-success" data-tx="t0018">找到了，开始吧！</span>
-				<span class="display-failed" data-tx="t0019">未找到，怎么办？</span>
-			</a>
-		  </div>
+			<div class="column">
+				<div class="notification is-info is-light">
+					<p class="is-size-4 has-text-centered">
+						<span class="icon">
+							<i class="fas fa-database"></i>
+						</span>
+						<strong data-tx="t0048:1c6af23e">强强联手：</strong>
+					</p>
+					<p class="has-text-centered mt-3" data-tx="t0049:60846880">任何人都可以加入！直接在应用程序中、网站上或通过<a th:href="@{/blacklist}">将其添加到您的个人黑名单</a>来举报垃圾号码。一旦号码被举报，它就会被添加到所有用户的黑名单中。参与的用户越多，我们就能更好地保护自己免受垃圾电话的侵害。</p>
+					<p class="has-text-centered mt-3">
+						<a class="button is-info" th:href="@{/status}">
+							<span class="icon">
+								<i class="fas fa-chart-bar"></i>
+							</span>
+							<span data-tx="t0050:eb8d6186">查看当前统计数据</span>
+						</a>
+					</p>
+				</div>
+			</div>
 		</div>
 
-		<p data-tx="t0014">不确定您是否拥有 Fritz!Box如果您目前在 WLan 的家中，请按上面的搜索按钮。然后，PhoneBlock 将尝试查找您附近的 Fritz!Box</p>
+		<div class="has-text-centered mt-5">
+			<h2 class="title is-3" data-tx="t0051:fc3cb6b6">准备好阻止垃圾电话了吗？</h2>
+			<p class="subtitle" data-tx="t0052:3fb05228">选择您的平台，只需几分钟即可开始使用：</p>
+
+			<div th:replace="~{fragments/page :: buttons}"></div>
+		</div>
+
 	</div>
 </section>
 

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<head th:replace="~{fragments/page :: head(title=#{page.index.title})}"></head>
+<head th:replace="~{fragments/page :: head(titleKey='page.index.title', descriptionKey='page.index.description', titleText=null, descriptionText=null)}"></head>
 
 <body th:dir="${currentLang.direction}">
 <div th:replace="~{fragments/page :: header}"></div>
@@ -8,81 +8,228 @@
 <section class="section">
 	<div class="content">
 		<div class="logo-animation">
-			<img alt="Логотип PhoneBlock" data-tx="t0015" th:src="@{/assets/img/animation.svg}"/>
+			<img alt="Логотип PhoneBlock" data-tx="t0015:5b0e8765" th:src="@{/assets/img/animation.svg}"/>
 		</div>
 
-		<h1 data-tx="t0001">Автоматично відхиляйте небажаних абонентів</h1>
+		<h1 data-tx="t0001:79729e8b">Автоматично відхиляйте небажаних абонентів</h1>
 
-		<p data-tx="t0002">Ваш номер телефону також потрапив до рук нечесних торговців адресами і ви постійно отримуєте настирливі дзвінки, які хочуть "оптимізувати" ваш рахунок за електроенергію, дати вам пораду щодо сонячної системи, оголосити про черговий грандіозний приз або запропонувати інші "привілеї"? Тоді <b>PhoneBlock</b> - це саме те, що вам потрібно!</p>
+		<p data-tx="t0002:55e1cc1a">Ваш номер телефону також потрапив до рук шахраїв, які торгують адресами? Ви постійно отримуєте настирливі дзвінки, які хочуть "оптимізувати" ваш рахунок за електроенергію, дати вам пораду щодо сонячної системи або оголосити про черговий грандіозний приз? Тоді <b>PhoneBlock</b> - це саме те, що вам потрібно!</p>
+
+		<div th:replace="~{fragments/page :: buttons}"></div>
+
+		<h2 data-tx="t0016:855ca724">Чому PhoneBlock?</h2>
+
+		<div class="columns is-multiline">
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-shield-alt fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0017:372c266b">Автоматичний захист</h3>
+					<p data-tx="t0018:939eaea">Ваш роутер або смартфон автоматично блокує спам-дзвінки - без вашої участі.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-users fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0019:e1e1d3fb">Сила громади</h3>
+					<p data-tx="t0020:c0dea87">Тисячі користувачів щодня повідомляють про нові спам-номера. Разом ми можемо захистити себе від набридливих рекламних дзвінків.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-sync fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0021:403225f8">Завжди в курсі подій</h3>
+					<p data-tx="t0022:77377622">Список блокування оновлюється автоматично. Нові спам-номера блокуються негайно.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-lock fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0023:5f4450bc">Захист даних</h3>
+					<p data-tx="t0024:6b49a98"><a th:href="@{/link/github}">Відкритий вихідний код</a> та саморозміщений. Ваші телефонні номери хешуються - ніхто не бачить, хто вам телефонує.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-gift fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0025:5f4715c">Безкоштовно</h3>
+					<p data-tx="t0026:a55c86e4">PhoneBlock повністю безкоштовний і не містить реклами. Створений спільнотою, для спільноти (ви можете <a th:href="@{/support}">пожертвувати</a> на його роботу).</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="has-text-centered">
+					<span class="icon is-large has-text-primary">
+						<i class="fas fa-cogs fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0027:754345bd">Гнучкий</h3>
+					<p data-tx="t0053:91c8788c">Працює на <a th:href="@{/festnetz}">стаціонарному телефоні</a>, на <a th:href="@{/setup-android}">Android</a>, <a th:href="@{/setup-iphone}">iPhone</a> та <a th:href="@{/setup-switchboard}">телефонних системах</a> - як саме, вирішувати вам.</p>
+				</div>
+			</div>
+		</div>
+
+		<h2 data-tx="t0029:f316c4f9">Це так просто</h2>
 
 		<div class="columns">
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${fritzbox ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/anrufbeantworter}">
-			    <span class="icon">
-					<img th:src="@{/assets/img/ab/logo/ab-logo-white.svg}"/>
-			    </span>
-				<span data-tx="t0003">Автовідповідач</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium is-info is-fullwidth|" th:href="@{/setup}">
-			    <span class="icon">
-					<i class="fa-solid fa-phone"></i>
-			    </span>
-				<span data-tx="t0004">Телефонна книга Fritz!Box</span>			
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${android ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-android}">
-			    <span class="icon">
-					<i class="fa-solid fa-mobile-screen"></i>
-			    </span>
-				<span data-tx="t0005">Для Android</span>
-			</a>
-		  </div>
-		  <div class="column is-one-quarter">
-			<a th:class="|button is-medium ${iphone ? 'is-primary' : 'is-info'} is-fullwidth|" th:href="@{/setup-iphone}">
-			    <span class="icon">
-					<i class="fa-brands fa-apple"></i>
-			    </span>
-				<span data-tx="t0006">Для iPhone</span>
-			</a>
-		  </div>
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-download fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0030:365b45bb">1. установка</h3>
+					<p data-tx="t0031:ca7700fd">Виберіть свою платформу і дотримуйтесь інструкцій з встановлення. Це займе всього кілька хвилин.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-check-circle fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0032:3226e470">2. налаштувати</h3>
+					<p data-tx="t0033:d28ccabb">PhoneBlock завантажує поточний чорний список і налаштовує автоматичне оновлення.</p>
+				</div>
+			</div>
+
+			<div class="column is-one-third">
+				<div class="box has-text-centered">
+					<span class="icon is-large has-text-info">
+						<i class="fas fa-phone-slash fa-3x"></i>
+					</span>
+					<h3 class="title is-5" data-tx="t0034:39c4cb5e">3. захищено!</h3>
+					<p data-tx="t0035:460bd8e6">Відтепер спам-дзвінки будуть блокуватися автоматично. Ваш телефон нарешті замовкне.</p>
+				</div>
+			</div>
 		</div>
 
-		<h2 data-tx="t0007">Як працює PhoneBlock?</h2>
+		<h2 data-tx="t0036:7f1ed01c">Оберіть свою платформу</h2>
 
-		<p data-tx="t0008">PhoneBlock - це список телефонних номерів, що підтримується спільнотою PhoneBlock, які підозрюються як спам. Автовідповідач <a th:href="@{/anrufbeantworter}">PhoneBlock</a> приймає дзвінки від абонентів зі списку блокування, так що ваш телефон буде мовчати під час цих дзвінків.</p>
-		
-		<p data-tx="t0009">Крім того, ви також можете імпортувати чорний список у вигляді телефонної книги в інтернет-маршрутизатор "FRITZ!Box" і блокувати дзвінки з номерів з цієї <a th:href="@{/setup}">спеціальної телефонної книги</a>. Вам більше не потрібно вручну блокувати діапазони номерів, оскільки ваш Fritz!Box автоматично оновлює список заблокованих номерів щовечора. Як тільки номер додається до цього чорного списку, ваш FRITZ!Box автоматично відхиляє дзвінки з цього номера. Однак <a th:href="@{/anrufbeantworter}"> автовідповідач</a> є кращим рішенням, оскільки телефонна книга має обмежений розмір і не може вмістити всі номери в списку блокування.</p>
+		<div class="columns is-multiline">
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-phone"></i></span>
+								<span data-tx="t0054:374baf20">Стаціонарний телефон</span>
+							</span>
+						</p>
+						<p data-tx="t0055:fa373b77">Три варіанти на вибір: <a th:href="@{/dongle}">Донгл PhoneBlock</a> у вигляді невеликої флешки в роутері, <a th:href="@{/anrufbeantworter}">Хмарний автовідповідач</a> через Fritz!Box або <a th:href="@{/setup}">Телефонна книга Blocklist</a> у вигляді синхронізації з CardDAV. Який з них підходить вам найкраще, залежить від вашого маршрутизатора, провайдера та вимог до захисту даних.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${fritzbox ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/festnetz}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0056:f69b313">Виберіть варіант фіксованої мережі</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<p data-tx="t0010">Якщо ви все ще отримуєте небажаний дзвінок, тому що номер ще не додано до списку заблокованих, ви можете легко заблокувати <a th:href="@{/block}">номер у вашій FRITZ!Box</a>. Для цього внесіть запис про небажаного абонента в адресну книгу PhoneBlock безпосередньо у вашому Fritz!Box Щойно ви це зробите, ваш FritzBox оновить список блокування для всіх членів спільноти PhoneBlock, і дзвінки з цього нового номера також будуть негайно заблоковані для всіх інших. Це трохи довше, ніж блокування номера безпосередньо у вашому Fritz!BoxТелефоні, але має перевагу в тому, що ви захищаєте всю спільноту PhoneBlock від <a th:href="@{/status}">подальших спам-дзвінків</a>.</p>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-android"></i></span>
+								<span data-tx="t0057:aecec7cb">Android</span>
+							</span>
+						</p>
+						<p data-tx="t0058:cee8e47c">Блокуйте спам-дзвінки безпосередньо на своєму мобільному телефоні Android за допомогою програми <a th:href="@{/setup-android}">PhoneBlock</a>. Додаток перевіряє вхідні дзвінки в режимі реального часу і автоматично блокує відомі спам-номера. Ви можете самостійно встановити, за скільки негативних повідомлень номер буде заблоковано.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${android ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-android}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0059:b0eb119f">Налаштування Android</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<h2 data-tx="t0011">Які вимоги?</h2>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-brands fa-apple"></i></span>
+								<span data-tx="t0060:b21bebc5">iPhone</span>
+							</span>
+						</p>
+						<p data-tx="t0061:b45f7cac">Додайте список блокування PhoneBlock до контактів вашого iPhone. iOS автоматично покаже вам, коли абонент знаходиться в списку блокування. <a th:href="@{/setup-iphone}">Налаштування</a> виконується через CardDAV - ваш iPhone автоматично підтримує список в актуальному стані.</p>
+					</div>
+					<footer class="card-footer">
+						<a th:class="|card-footer-item button ${iphone ? 'is-primary' : 'is-info'} is-medium|" th:href="@{/setup-iphone}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0062:c278f9d5">Налаштування iPhone</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 
-		<div class="fritzbox-position">
-			<a th:href="@{/link/fritzbox}"> <img alt="AVM Fritz!Box 7590" data-tx="t0016" id="fritzbox" th:src="@{/assets/img/fritzbox.png}" width="200"/>
-			</a>
+			<div class="column is-half">
+				<div class="card is-fullheight">
+					<div class="card-content">
+						<p class="title is-5">
+							<span class="icon-text">
+								<span class="icon"><i class="fa-solid fa-asterisk"></i></span>
+								<span data-tx="t0063:9faa419a">Телефонна система</span>
+							</span>
+						</p>
+						<p data-tx="t0064:99335f28">Інтегруйте PhoneBlock у вашу <a th:href="@{/setup-switchboard}">телефонну систему</a> або АТС. Список блоків можна завантажити в різних форматах або запросити через API. Ідеально підходить для компаній та професійних телефонних систем.</p>
+					</div>
+					<footer class="card-footer">
+						<a class="card-footer-item button is-info is-medium" th:href="@{/setup-switchboard}">
+							<span class="icon"><i class="fas fa-arrow-right"></i></span>
+							<span data-tx="t0065:aa28e976">Налаштування телефонної системи</span>
+						</a>
+					</footer>
+				</div>
+			</div>
 		</div>
-		
-		<p data-tx="t0012">PhoneBlock може блокувати небажані дзвінки або на <a th:href="@{/setup}">"стаціонарному телефоні"</a> у поєднанні з <a th:href="@{/link/fritzbox}">"інтернет-роутером FRITZ!Box" від AVM</a>, або показувати безпосередньо на вашому <a th:href="@{/setup-android}">мобільному телефоні</a>, чи є абонент потенційно небажаним.</p>
-		
+
+		<h2 data-tx="t0047:5f8f8581">Спільнота робить різницю</h2>
+
 		<div class="columns">
-		  <div class="column is-half is-offset-one-quarter">
-			  <input id="context-path" th:value="${contextPath}" type="hidden"/>
-			<a class="button is-medium is-info is-fullwidth state-initial" href="#" id="search-fritzbox">
-				<span class="icon is-small is-left">
-					<i class="fa-solid fa-magnifying-glass"></i>
-				</span>
-				<span class="display-initial" data-tx="t0013">Шукай Fritz!Box</span>
-				<span class="display-searching" data-tx="t0017">Зачекай хвилинку...</span>
-				<span class="display-success" data-tx="t0018">Знайшли, починайте!</span>
-				<span class="display-failed" data-tx="t0019">Не знайдено, що робити?</span>
-			</a>
-		  </div>
+			<div class="column">
+				<div class="notification is-info is-light">
+					<p class="is-size-4 has-text-centered">
+						<span class="icon">
+							<i class="fas fa-database"></i>
+						</span>
+						<strong data-tx="t0048:1c6af23e">Разом ми сильні:</strong>
+					</p>
+					<p class="has-text-centered mt-3" data-tx="t0049:60846880">Долучитися може будь-хто! Повідомляйте про спам-номера безпосередньо в додатку, на сайті або шляхом <a th:href="@{/blacklist}">додавання в особистий чорний список</a>. Як тільки номер буде повідомлено, його буде додано до чорного списку для всіх користувачів. Чим більше користувачів візьмуть участь у програмі, тим краще ми всі зможемо захиститися від спам-дзвінків.</p>
+					<p class="has-text-centered mt-3">
+						<a class="button is-info" th:href="@{/status}">
+							<span class="icon">
+								<i class="fas fa-chart-bar"></i>
+							</span>
+							<span data-tx="t0050:eb8d6186">Переглянути поточну статистику</span>
+						</a>
+					</p>
+				</div>
+			</div>
 		</div>
 
-		<p data-tx="t0014">Не знаєте, чи є у вас Fritz!Box box? Якщо ви зараз перебуваєте вдома в бездротовій мережі, натисніть кнопку пошуку вище. PhoneBlock спробує знайти Fritz!Box box у вашому районі.</p>
+		<div class="has-text-centered mt-5">
+			<h2 class="title is-3" data-tx="t0051:fc3cb6b6">Готові блокувати спам-дзвінки?</h2>
+			<p class="subtitle" data-tx="t0052:3fb05228">Оберіть свою платформу та розпочніть роботу всього за кілька хвилин:</p>
+
+			<div th:replace="~{fragments/page :: buttons}"></div>
+		</div>
+
 	</div>
 </section>
 
